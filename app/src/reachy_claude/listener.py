@@ -23,7 +23,9 @@ from .tts import Speaker
 from .wakeword import Wake, clean_text, parse_wake
 
 WAKE_FOLLOW_UP_S = 8.0  # nach "Claude." so lange auf den Auftrag warten
-DEAF_AFTER_RESPONSE_S = 0.6  # Nachhall/Netzverzoegerung der eigenen Ansage abwarten
+DEAF_AFTER_RESPONSE_S = (
+    1.5  # Reachy spielt verzoegert ab (Netz + Puffer) – Rest der eigenen Ansage ignorieren
+)
 
 Output = Callable[[str], None]
 CommandHandler = Callable[[str], None]

@@ -124,6 +124,8 @@ einige Minuten (das SDK bringt GStreamer für Audio/Video mit).
    ```
 2. Die Aufnahme wird auf dem PC gespeichert: `app\aufnahmen\audio-test-<Zeit>.wav`.
 3. Reachy spielt **zwei Töne** und danach **deine Aufnahme** ab.
+4. Reachy piept kurz; die App misst, wann der Ton wieder im Mikrofon ankommt
+   („Verzögerung Lautsprecher -> Mikrofon“) – daraus ergeben sich Wartezeiten der App.
 
 Hörst du beides aus Reachy, funktioniert Audio – dann kann Schritt 2 kommen.
 

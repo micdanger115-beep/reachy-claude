@@ -28,6 +28,11 @@
   `start_playing()` ein No-op; der Sendeweg wird erst aufgebaut, wenn der Mikrofon-Strom ankommt (gleicher
   Callback im SDK). `say` sendete direkt nach dem Verbinden → Ton verworfen. Fix: `robot.wait_for_audio()`
   wartet auf die ersten Mikrofon-Daten (oeffentliche API) vor jeder Ausgabe; Abspiel-Nachlauf 0,5 s.
+- **Fehler am echten Reachy (`say`, Satz bricht nach der Haelfte ab):** Reachy spielt WebRTC-Ton verzoegert
+  ab (Netz + Puffer im Roboter); `say` trennte die Verbindung zu frueh. `stop_sound` ist es nicht (stoppt nur
+  Sounddateien). Fix: `say` haelt die Verbindung 2 s laenger offen; Taubheitsfenster nach eigener Ansage
+  0,6 → 1,5 s. Neu: `check-audio` misst die Rundlauf-Verzoegerung (Piepton → Mikrofon), um die Werte mit
+  echten Zahlen einzustellen. **Messwert vom Nutzer steht aus.**
 - Kein Selbstgespraech: Antwort laeuft blockierend im Hauptthread; danach Mikrofon-Warteschlange leeren,
   Satzerkennung zuruecksetzen, 0,6 s „taub“ (Netzlatenz/Nachhall). Test mit phasenweisem Fake-Mikrofon,
   Gegenprobe ohne Echo-Loeschen schlaegt fehl.

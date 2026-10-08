@@ -16,6 +16,7 @@ from .tts import DEFAULT_VOICE, Speaker
 logger = logging.getLogger("reachy_claude")
 
 GREETING = "Hallo! Ich höre zu. Sag Claude und dann deinen Auftrag."
+SAY_LINGER_S = 2.0  # Verbindung nach "say" offen halten, bis Reachy wirklich fertig gesprochen hat
 
 
 def print_line(line: str) -> None:
@@ -109,6 +110,8 @@ def run_say(args: argparse.Namespace) -> int:
     with connect(args.robot, debug=args.debug) as mini:
         wait_for_audio(mini.media)
         Voice(speaker, mini.media, print_line).say(args.text)
+        # Reachy spielt mit Verzoegerung ab; trennt man sofort, fehlt das Satzende.
+        time.sleep(SAY_LINGER_S)
     return 0
 
 

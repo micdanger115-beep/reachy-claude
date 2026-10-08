@@ -3,6 +3,7 @@
 1. Mikrofon: einige Sekunden aufnehmen und dabei den Pegel live anzeigen.
 2. Aufnahme als WAV auf dem PC speichern.
 3. Lautsprecher: zwei Testtoene, danach die Aufnahme auf Reachy abspielen.
+4. Verzoegerung messen: Piepton auf Reachy, wann kommt er im Mikrofon an?
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from .audio import SAMPLE_RATE, Audio, level_bar, level_dbfs, save_wav, silence, to_mono, tone
+from .latency import measure_round_trip
 from .robot import RobotMedia, play
 
 MIC_READY_TIMEOUT_S = 5.0
@@ -30,6 +32,7 @@ class AudioCheckResult:
     seconds_recorded: float
     peak_dbfs: float
     saved_to: Path | None
+    round_trip_s: float | None = None
 
 
 def record(
@@ -116,8 +119,19 @@ def run_audio_check(
         saved = save_to
         output(f"2/3 Aufnahme gespeichert: {save_to}")
 
-    output("3/3 Lautsprecher: Reachy spielt zwei Toene und danach deine Aufnahme ab ...")
+    output("3/4 Lautsprecher: Reachy spielt zwei Toene und danach deine Aufnahme ab ...")
     beeps = np.concatenate([tone(660, 0.25), silence(0.15), tone(880, 0.25), silence(0.5)])
     play(media, np.concatenate([beeps, recording]), sleep=sleep)
-    output("Fertig. Hast du die Toene und deine Stimme aus Reachy gehoert? Dann funktioniert Audio.")
-    return AudioCheckResult(True, duration, peak, saved)
+
+    output("4/4 Verzoegerung: Reachy piept kurz, bitte jetzt leise sein ...")
+    sleep_fn = sleep or time.sleep
+    sleep_fn(1.5)  # Nachlauf der Wiedergabe abwarten
+    round_trip = measure_round_trip(media, clock=clock, sleep=sleep)
+    if round_trip is None:
+        output("  Piepton im Mikrofon nicht erkannt (Reachy zu leise oder Raum zu laut).")
+    else:
+        output(f"  Verzoegerung Lautsprecher -> Mikrofon: {round_trip:.2f} s")
+    output(
+        "Fertig. Hast du die Toene und deine Stimme vollstaendig aus Reachy gehoert? Dann funktioniert Audio."
+    )
+    return AudioCheckResult(True, duration, peak, saved, round_trip)
