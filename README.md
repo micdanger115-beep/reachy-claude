@@ -23,15 +23,24 @@ Sprach-Backend auf dem PC – am Roboter wird nichts verändert.
 **Auf Reachy:** Die **Conversation-App** ganz normal im Reachy-Dashboard
 installieren und starten (Standard-Einstellungen, Sprache über Hugging Face).
 
-**Auf dem Windows-PC** (Python ≥ 3.11, im selben WLAN wie Reachy):
+**Auf dem Windows-PC** (im selben WLAN wie Reachy):
 
-```powershell
-git clone https://github.com/micdanger115-beep/reachy-claude.git
-cd reachy-claude\bridge
-powershell -ExecutionPolicy Bypass -File .\listen.ps1
-```
+1. **Python installieren** (einmalig, falls `py --version` einen Fehler zeigt):
+   ```powershell
+   winget install -e --id Python.Python.3.12
+   ```
+   Alternativ von https://www.python.org/downloads/ – dabei „Add python.exe to PATH“
+   anhaken. Danach **PowerShell schließen und neu öffnen**.
+2. **Holen und starten:**
+   ```powershell
+   git clone https://github.com/micdanger115-beep/reachy-claude.git
+   cd reachy-claude
+   powershell -ExecutionPolicy Bypass -File .\listen.ps1
+   ```
 
-Beim ersten Start richtet das Skript alles selbst ein. Danach siehst du:
+Beim ersten Start sucht das Skript Python (`py`, `python` oder `python3`, mindestens
+3.11), legt eine eigene Umgebung an und installiert alles Nötige. Fehlt Python,
+erklärt es, was zu tun ist. Danach siehst du:
 
 ```
 Verbunden mit ws://reachy-mini.local:7860/rpc
@@ -52,6 +61,8 @@ Ohne Skript (z. B. Linux/macOS): `claude-bridge listen --robot reachy-mini.local
 
 | Meldung | Bedeutung / Lösung |
 |---|---|
+| „Python 3.11 oder neuer wurde nicht gefunden“ | Python installieren (Schritt 1), **neues** PowerShell-Fenster öffnen |
+| „Das Argument .\listen.ps1 … ist nicht vorhanden“ | Du bist nicht im Ordner `reachy-claude` → `cd` dorthin |
 | „Reachy nicht erreichbar … Neuer Versuch“ | Conversation-App läuft nicht, oder Name/IP falsch → im Dashboard starten bzw. `-Robot <IP>` |
 | „Sprachdienst ist nicht verbunden“ | Reachy erreicht seinen Sprachdienst nicht (Internet/Hugging-Face-Login am Roboter prüfen) |
 | Verbunden, aber keine Zeilen | Mikrofon stumm? In der Weboberfläche der App (`http://reachy-mini.local:7860`) prüfen |
@@ -346,6 +357,7 @@ reachy-claude/
 ├── plan.md                 Plan, Entscheidungen, Recherche
 ├── README.md               diese Datei
 ├── SECURITY.md             Bedrohungsmodell & Maßnahmen
+├── listen.ps1              Stufe 1 aus dem Hauptordner starten
 ├── start-tunnel.ps1        SSH-Tunnel (Windows)
 ├── bridge/                 PC-Dienst (Python ≥3.11, einzige Abhängigkeit: websockets)
 │   ├── src/claude_bridge/
@@ -359,6 +371,7 @@ reachy-claude/
 │   ├── tests/              pytest inkl. Fake-Claude-CLI (auch als .cmd unter Windows)
 │   ├── .env.example
 │   ├── listen.ps1          Stufe 1 starten (Windows)
+│   ├── python-env.ps1      gemeinsam: Python finden, .venv anlegen/reparieren
 │   └── start-bridge.ps1    Stufe 2 starten (Windows)
 ├── robot/
 │   ├── external_tools/ask_claude.py           Tool (Einzeldatei, nur stdlib)

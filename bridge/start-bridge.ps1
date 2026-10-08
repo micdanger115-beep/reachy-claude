@@ -1,16 +1,14 @@
-# Startet die claude-bridge unter Windows (PowerShell).
-# Erster Start legt eine virtuelle Umgebung an. Aufruf im Ordner bridge\:
+# Stufe 2: claude-bridge starten (Windows, PowerShell). Aufruf im Ordner bridge\:
 #   powershell -ExecutionPolicy Bypass -File .\start-bridge.ps1
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
+. (Join-Path $PSScriptRoot "python-env.ps1")
 
-if (-not (Test-Path ".venv")) {
-    py -3 -m venv .venv
-    .\.venv\Scripts\python.exe -m pip install --upgrade pip
-    .\.venv\Scripts\python.exe -m pip install -e .
-}
+$python = Initialize-BridgeEnvironment
 if (-not (Test-Path ".env")) {
-    Write-Error "Keine .env gefunden. Kopiere .env.example nach .env und trage Token/Ordner ein."
+    Write-Host "Keine .env gefunden. Kopiere .env.example nach .env und trage Token/Ordner ein." -ForegroundColor Red
+    exit 1
 }
-.\.venv\Scripts\python.exe -m claude_bridge --env-file .env check
-.\.venv\Scripts\python.exe -m claude_bridge --env-file .env serve
+& $python -m claude_bridge --env-file .env check
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& $python -m claude_bridge --env-file .env serve

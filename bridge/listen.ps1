@@ -1,5 +1,5 @@
 # Stufe 1: Gespraech mit Reachy live als Text anzeigen (Windows, PowerShell).
-# Aufruf im Ordner bridge\:
+# Aufruf (im Ordner bridge\ oder im Hauptordner ueber ..\listen.ps1):
 #   powershell -ExecutionPolicy Bypass -File .\listen.ps1
 #   powershell -ExecutionPolicy Bypass -File .\listen.ps1 -Robot 192.168.1.30
 param(
@@ -8,14 +8,10 @@ param(
 )
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
+. (Join-Path $PSScriptRoot "python-env.ps1")
 
-if (-not (Test-Path ".venv")) {
-    Write-Host "Erster Start: richte Python-Umgebung ein ..."
-    py -3 -m venv .venv
-    .\.venv\Scripts\python.exe -m pip install --upgrade pip
-    .\.venv\Scripts\python.exe -m pip install -e .
-}
-$saveFile = "transcripts\gespraech-$(Get-Date -Format 'yyyy-MM-dd').md"
+$python = Initialize-BridgeEnvironment
+$saveFile = Join-Path "transcripts" "gespraech-$(Get-Date -Format 'yyyy-MM-dd').md"
 $listenArgs = @("-m", "claude_bridge", "listen", "--robot", $Robot, "--save", $saveFile)
 if ($ShowTurns) { $listenArgs += "--show-turns" }
-.\.venv\Scripts\python.exe @listenArgs
+& $python @listenArgs

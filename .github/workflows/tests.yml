@@ -30,6 +30,15 @@ jobs:
       - run: python -m ruff format --check .
       - run: python -m mypy
       - run: python -m pytest -q
+      # Startskripte unter dem echten Windows PowerShell 5.1 pruefen (Python suchen, .venv anlegen).
+      - name: PowerShell-Startskripte (Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          . .\python-env.ps1
+          $py = Initialize-BridgeEnvironment
+          & $py -c "import claude_bridge, websockets; print('Startskript OK')"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
   robot-tool:
     name: Roboter-Tool
