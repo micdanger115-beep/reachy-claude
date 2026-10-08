@@ -39,6 +39,16 @@ class RobotMedia(Protocol):
     def get_output_audio_samplerate(self) -> int: ...
 
 
+class _DropMissingUsbAudio(logging.Filter):
+    """Das SDK sucht auf dem PC eine USB-Soundkarte von Reachy; bei der WLAN-Variante gibt es keine."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "No Reachy Mini Audio USB device" not in record.getMessage()
+
+
+logging.getLogger("reachy_mini.media.audio_control_utils").addFilter(_DropMissingUsbAudio())
+
+
 class RobotConnectionError(RuntimeError):
     """Reachy ist nicht erreichbar (Text ist fuer den Nutzer gedacht)."""
 

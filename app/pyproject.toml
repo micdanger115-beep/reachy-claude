@@ -11,10 +11,13 @@ dependencies = [
   # Muss zur Software-Version des Roboters passen (Dashboard -> Einstellungen).
   "reachy-mini~=1.11.0",
   "numpy>=2.2",
+  "faster-whisper>=1.2,<2",  # Spracherkennung (lokal)
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]
+# CUDA-Bibliotheken fuer Whisper auf NVIDIA-Grafikkarten (ctranslate2 4.x braucht CUDA 12 + cuDNN 9).
+gpu = ["nvidia-cublas-cu12>=12,<13", "nvidia-cudnn-cu12>=9,<10"]
 
 [project.scripts]
 reachy-claude = "reachy_claude.__main__:main"
@@ -43,5 +46,5 @@ strict = true
 files = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["reachy_mini", "reachy_mini.*"]
+module = ["reachy_mini", "reachy_mini.*", "faster_whisper", "faster_whisper.*", "nvidia"]
 ignore_missing_imports = true

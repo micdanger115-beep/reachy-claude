@@ -12,10 +12,10 @@ Bei jeder Änderung mitpflegen. (v1-Bedrohungsmodell: [`legacy/SECURITY.md`](leg
 | # | Bedrohung | Maßnahme | Stand |
 |---|---|---|---|
 | S1 | Fremde im Netz greifen auf den PC zu | Die App öffnet **keinen Port**; sie verbindet sich selbst zum Roboter | ✅ |
-| S2 | Sprache verlässt das Haus | Spracherkennung und -ausgabe lokal auf dem PC; Audio nur im Heimnetz (WebRTC, Signalisierung auf dem Roboter) | ✅ Audio-Weg / ⏳ STT+TTS ab Schritt 2–3 |
-| S3 | Versehentliche Aufträge (Fernseher, Gäste, Fehlerkennung) | Nur Sätze mit Aktivierungswort „Claude“ gehen weiter; ein Auftrag gleichzeitig | ⏳ Schritt 2/4 |
+| S2 | Sprache verlässt das Haus | Spracherkennung (Whisper) und -ausgabe lokal auf dem PC; Audio nur im Heimnetz (WebRTC, Signalisierung auf dem Roboter); Modelle nur einmalig heruntergeladen | ✅ Audio + Erkennung / ⏳ Ausgabe Schritt 3 |
+| S3 | Versehentliche Aufträge (Fernseher, Gäste, Fehlerkennung) | Nur Sätze mit Aktivierungswort „Claude“ (am Satzanfang) gehen weiter; „Claude“ allein öffnet nur 8 s lang; ein Auftrag gleichzeitig | ✅ Aktivierungswort / ⏳ Schritt 4 |
 | S4 | Claude richtet Schaden an | Wie v1: `--permission-mode dontAsk`, nur Lesen/Bearbeiten im Projektordner, **keine Shell, kein Internet, keine MCP-Server**, Timeout, Prompt nur über stdin | ⏳ Schritt 4 (Code aus v1 übernommen) |
-| S5 | Manipulierte Texte im Terminal (Steuerzeichen) | Texte werden vor der Anzeige bereinigt (wie v1 `listen`) | ⏳ Schritt 2 |
+| S5 | Manipulierte Texte im Terminal (Steuerzeichen) | Erkannte Texte werden vor Anzeige/Weitergabe bereinigt | ✅ |
 | S6 | Supply-Chain | wenige, verbreitete Abhängigkeiten; Reachy-SDK auf `~=1.11.0` begrenzt | ✅ |
 | S7 | Aufnahmen auf der Festplatte | Audio-Test speichert WAV nur lokal in `app/aufnahmen/` (nicht in Git) | ✅ |
 

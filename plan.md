@@ -8,12 +8,24 @@
 3. Umsetzung schrittweise; jeder Schritt wird am echten Reachy getestet.
 
 ### Fortschritt
-- [x] Schritt 1: Audio-Test `reachy-claude check-audio` (+ `reachy-claude.ps1`) – wartet auf Test am Reachy
-- [ ] Schritt 2: Spracherkennung + Aktivierungswort (Text)
+- [x] Schritt 1: Audio-Test `reachy-claude check-audio` – **am Reachy erfolgreich** (Sprache −14…−18 dB, Raum ~−40 dB)
+- [x] Schritt 2: Spracherkennung + Aktivierungswort `reachy-claude listen` – wartet auf Test am Reachy
 - [ ] Schritt 3: Sprachausgabe
 - [ ] Schritt 4: Claude anbinden
 - [ ] Schritt 5: Bewegungen
 - [ ] Schritt 6: Startskript, Feinschliff
+
+### Erkenntnisse Schritt 2
+- Satzerkennung: eigene Pegel-Erkennung (30-ms-Frames, Grundrauschen = 10 %-Quantil der letzten 3 s,
+  0,8 s Pause = Satzende, 0,3 s Vorlauf). An Piper-Sprache + −40 dB Rauschen abgestimmt:
+  Schwelle 12 dB fand nur 2/4 Saetze, **6 dB findet 4/4** (Regressionstest `tests/data`).
+- Whisper: `large-v3-turbo` int8_float16 auf CUDA, Rueckfall `small` int8 auf CPU; `vad_filter=True`
+  (Silero aus faster-whisper) gegen erfundene Saetze; `initial_prompt` mit „Claude“.
+- Windows/CUDA: pip-Extra `gpu` (nvidia-cublas-cu12, nvidia-cudnn-cu12); DLL-Ordner werden zur
+  Laufzeit registriert. Startskript installiert es nur, wenn `nvidia-smi` existiert. **Auf echter
+  Hardware ungetestet.**
+- Hugging Face ist in der Cloud-Arbeitsumgebung gesperrt → echte Whisper-Pruefung laeuft in CI (Windows).
+- faster-whisper 1.2.1 und piper-tts 1.8.0 vertragen sich mit reachy-mini 1.11 (onnxruntime 1.27 bleibt).
 
 ### Erkenntnisse Schritt 1
 - PyPI-Version `reachy-mini` 1.11.0 (GitHub-main ist 1.12-dev); API identisch für unseren Bedarf.
@@ -21,6 +33,7 @@
 - `ReachyMini(..., log_level=...)` steuert die SDK-Ausgaben; Standard bei uns WARNING.
 - Fehlerbilder unterscheiden: Port 8000 (Daemon) zu → Roboter nicht erreichbar;
   8000 offen, 8443 zu → Medienserver/WebRTC-Problem.
+- Harmlose SDK-Meldung „No Reachy Mini Audio USB device found!“ (sucht USB-Soundkarte am PC) wird ausgefiltert.
 - Im Linux-Container fehlt das GStreamer-WebRTC-Plugin (webrtcsink) → WebRTC-Audio hier nicht
   testbar; unter Windows liefert `gstreamer-bundle` es mit.
 

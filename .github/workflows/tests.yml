@@ -59,6 +59,10 @@ jobs:
           .\.venv\Scripts\python.exe -m reachy_claude --robot 127.0.0.1 check-audio --seconds 1
           if ($LASTEXITCODE -ne 1) { Write-Host "Erwartet: Exit-Code 1 (kein Roboter)"; exit 1 }
           exit 0
+      - name: Spracherkennung (Whisper small auf CPU) mit echter Testaufnahme
+        run: |
+          .\.venv\Scripts\python.exe -c "from pathlib import Path; from reachy_claude.audio import load_wav; from reachy_claude.segmenter import SpeechSegmenter; from reachy_claude.stt import SttConfig, WhisperTranscriber; from reachy_claude.wakeword import parse_wake; audio, _ = load_wav(Path('tests/data/vier_saetze_raumrauschen.wav')); seg = SpeechSegmenter(); utts = [u for i in range(0, audio.size, 320) for u in seg.feed(audio[i:i+320])]; stt = WhisperTranscriber(SttConfig(device='cpu')); texts = [stt.transcribe(u) for u in utts]; [print(repr(t), parse_wake(t).kind.name) for t in texts]; kinds = [parse_wake(t).kind.name for t in texts]; raise SystemExit(0 if kinds[1] == 'COMMAND' and kinds[0] == 'NONE' else 1)"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
   legacy:
     name: Legacy v1 (Bridge + Roboter-Tool)

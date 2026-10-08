@@ -58,12 +58,21 @@ function Initialize-AppEnvironment {
         if ($LASTEXITCODE -ne 0) { Write-Host "Anlegen der Python-Umgebung (.venv) fehlgeschlagen." -ForegroundColor Red; exit 1 }
         $venvPython = Get-VenvPython
     }
-    # Auch nach einem abgebrochenen ersten Start: fehlende Pakete nachinstallieren.
-    & $venvPython -c "import reachy_claude, reachy_mini" 2>$null | Out-Host
+    # Auch nach einem abgebrochenen ersten Start oder einem Update: fehlende Pakete nachinstallieren.
+    & $venvPython -c "import reachy_claude, reachy_mini, faster_whisper" 2>$null | Out-Host
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Installiere reachy-claude und das Reachy-SDK (beim ersten Mal einige Minuten) ..."
+        Write-Host "Installiere reachy-claude, Reachy-SDK und Spracherkennung (beim ersten Mal einige Minuten) ..."
         & $venvPython -m pip install --disable-pip-version-check -q -e . | Out-Host
         if ($LASTEXITCODE -ne 0) { Write-Host "Installation fehlgeschlagen (Internetverbindung?)." -ForegroundColor Red; exit 1 }
+    }
+    # NVIDIA-Grafikkarte vorhanden? Dann CUDA-Bibliotheken fuer schnelle Spracherkennung (einmalig ~1-2 GB).
+    if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
+        & $venvPython -c "import nvidia.cublas, nvidia.cudnn" 2>$null | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "NVIDIA-Grafikkarte gefunden: installiere CUDA-Bibliotheken fuer die Spracherkennung (einmalig, gross) ..."
+            & $venvPython -m pip install --disable-pip-version-check -q -e ".[gpu]" | Out-Host
+            if ($LASTEXITCODE -ne 0) { Write-Host "CUDA-Bibliotheken nicht installiert - Spracherkennung laeuft dann auf dem Prozessor." -ForegroundColor Yellow }
+        }
     }
     return $venvPython
 }
