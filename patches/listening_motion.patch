@@ -1,0 +1,192 @@
+diff --git a/src/reachy_mini_conversation_app/moves.py b/src/reachy_mini_conversation_app/moves.py
+index 043d35a..c5f282a 100644
+--- a/src/reachy_mini_conversation_app/moves.py
++++ b/src/reachy_mini_conversation_app/moves.py
+@@ -18,12 +18,14 @@ Units and frames
+ - Antennas and `body_yaw` are in radians.
+ 
+ Safety
+-- Listening freezes antennas, then blends them back on unfreeze.
++- Listening holds the antennas around their last pose with a small attentive sway and
++  tilts the head slightly, then blends back on unfreeze.
+ - Interpolations and blends are used to avoid jumps at all times.
+ - `set_target` errors are rate-limited in logs.
+ """
+ 
+ from __future__ import annotations
++import math
+ import time
+ import logging
+ import threading
+@@ -47,10 +49,35 @@ logger = logging.getLogger(__name__)
+ # Configuration constants
+ CONTROL_LOOP_FREQUENCY_HZ = 60.0  # Hz - Target frequency for the movement control loop
+ 
++# Attentive listening motion (small on purpose: it must read as "alive", not as a gesture)
++LISTENING_FADE_S = 0.4
++LISTENING_ANTENNA_SWAY_RAD = 0.12  # ~7 deg
++LISTENING_ANTENNA_SWAY_HZ = 0.7
++LISTENING_HEAD_ROLL_DEG = 6.0
++LISTENING_HEAD_NOD_DEG = 2.0
++LISTENING_HEAD_NOD_HZ = 0.35
++
+ # Type definitions
+ FullBodyPose = Tuple[NDArray[np.float32], Tuple[float, float], float]  # (head_pose_4x4, antennas, body_yaw)
+ 
+ 
++def listening_motion(elapsed: float, weight: float) -> Tuple[float, float, Tuple[float, float]]:
++    """Return (head roll deg, head pitch deg, antenna offsets rad) for attentive listening.
++
++    ``weight`` (0..1) fades the whole motion in and out so it never jumps.
++    """
++    ease = min(1.0, max(0.0, weight))
++    ease = ease * ease * (3.0 - 2.0 * ease)  # smoothstep
++    phase = 2.0 * math.pi * LISTENING_ANTENNA_SWAY_HZ * elapsed
++    # Antennas sway out of phase so they look like they are "tuning in".
++    antennas = (
++        ease * LISTENING_ANTENNA_SWAY_RAD * math.sin(phase),
++        ease * LISTENING_ANTENNA_SWAY_RAD * math.sin(phase + math.pi / 2.0),
++    )
++    nod = LISTENING_HEAD_NOD_DEG * math.sin(2.0 * math.pi * LISTENING_HEAD_NOD_HZ * elapsed)
++    return ease * LISTENING_HEAD_ROLL_DEG, ease * nod, antennas
++
++
+ class BreathingMove(Move):  # type: ignore
+     """Breathing move with interpolation to neutral and then continuous breathing patterns."""
+ 
+@@ -221,6 +248,9 @@ class MovementManager:
+         self._antenna_blend_duration = 0.4  # seconds to blend back after listening
+         self._last_listening_blend_time = self._now()
+         self._breathing_active = False  # true when breathing move is running or queued
++        self._listening_started_at = self._now()
++        self._listening_weight = 0.0  # 0..1 fade of the attentive listening motion
++        self._last_listening_weight_time = self._now()
+         self._listening_debounce_s = 0.15
+         self._last_listening_toggle_time = self._now()
+         self._last_set_target_err = 0.0
+@@ -357,14 +387,19 @@ class MovementManager:
+             self._is_listening = desired_state
+             self._last_listening_blend_time = now
+             if desired_state:
+-                # Freeze: snapshot current commanded antennas and reset blend
++                # Hold: snapshot current commanded antennas as the sway centre and reset blend
+                 self._listening_antennas = (
+                     float(self._last_commanded_pose[1][0]),
+                     float(self._last_commanded_pose[1][1]),
+                 )
++                self._listening_started_at = now
+                 self._antenna_unfreeze_blend = 0.0
+             else:
+-                # Unfreeze: restart blending from frozen pose
++                # Unfreeze: blend back from where the swaying antennas actually are
++                self._listening_antennas = (
++                    float(self._last_commanded_pose[1][0]),
++                    float(self._last_commanded_pose[1][1]),
++                )
+                 self._antenna_unfreeze_blend = 0.0
+             self.state.update_activity()
+         elif command == "set_head_tracking":
+@@ -494,6 +529,13 @@ class MovementManager:
+             primary_full_body_pose = (neutral_head_pose, (0.0, 0.0), 0.0)
+             self.state.last_primary_pose = clone_full_body_pose(primary_full_body_pose)
+ 
++        if self._listening_weight > 0.0:
++            elapsed = current_time - self._listening_started_at
++            roll_deg, pitch_deg, _ = listening_motion(elapsed, self._listening_weight)
++            head_pose, antennas, body_yaw = primary_full_body_pose
++            tilt = create_head_pose(0, 0, 0, roll_deg, pitch_deg, 0, degrees=True)
++            primary_full_body_pose = (compose_world_offset(head_pose, tilt), antennas, body_yaw)
++
+         # Speaking pauses tracking: hold the look-at anchor, overlay emotions on it, dance from neutral.
+         if self._track_anchor is not None:
+             head_pose, antennas, body_yaw = primary_full_body_pose
+@@ -510,6 +552,13 @@ class MovementManager:
+         """Advance queue state and idle behaviours for this tick."""
+         self._manage_move_queue(current_time)
+         self._manage_breathing(current_time)
++        dt = max(0.0, current_time - self._last_listening_weight_time)
++        self._last_listening_weight_time = current_time
++        step = dt / LISTENING_FADE_S
++        target = 1.0 if self._is_listening else 0.0
++        self._listening_weight = (
++            min(1.0, self._listening_weight + step) if target else max(0.0, self._listening_weight - step)
++        )
+ 
+     def _calculate_blended_antennas(self, target_antennas: Tuple[float, float]) -> Tuple[float, float]:
+         """Blend target antennas with listening freeze state and update blending."""
+@@ -522,7 +571,9 @@ class MovementManager:
+         self._last_listening_blend_time = now
+ 
+         if listening:
+-            antennas_cmd = listening_antennas
++            elapsed = now - self._listening_started_at
++            _, _, (sway_left, sway_right) = listening_motion(elapsed, self._listening_weight)
++            antennas_cmd = (listening_antennas[0] + sway_left, listening_antennas[1] + sway_right)
+             new_blend = 0.0
+         else:
+             dt = max(0.0, now - last_update)
+diff --git a/tests/test_moves.py b/tests/test_moves.py
+index 9a0b5f7..92889ac 100644
+--- a/tests/test_moves.py
++++ b/tests/test_moves.py
+@@ -187,3 +187,60 @@ def test_handle_command_queue_and_clear() -> None:
+     manager._handle_command("clear_queue", None, now)
+     assert len(manager.move_queue) == 0
+     assert manager.state.current_move is None
++
++
++def test_listening_motion_is_bounded_and_silent_at_zero_weight() -> None:
++    """The listening motion stays small and vanishes completely at zero weight."""
++    from reachy_mini_conversation_app.moves import (
++        LISTENING_HEAD_ROLL_DEG,
++        LISTENING_ANTENNA_SWAY_RAD,
++        listening_motion,
++    )
++
++    assert listening_motion(1.23, 0.0) == (0.0, 0.0, (0.0, 0.0))
++    for step in range(200):
++        roll, pitch, (left, right) = listening_motion(step * 0.05, 1.0)
++        assert roll == pytest.approx(LISTENING_HEAD_ROLL_DEG)
++        assert abs(pitch) <= 2.0 + 1e-9
++        assert abs(left) <= LISTENING_ANTENNA_SWAY_RAD + 1e-9
++        assert abs(right) <= LISTENING_ANTENNA_SWAY_RAD + 1e-9
++
++
++def _run_ticks(manager: MovementManager, clock: list[float], seconds: float, dt: float = 1 / 60) -> list[tuple]:
++    poses = []
++    for _ in range(int(seconds / dt)):
++        clock[0] += dt
++        manager._poll_signals(clock[0])
++        manager._update_primary_motion(clock[0])
++        head, antennas, body_yaw = manager._get_primary_pose(clock[0])
++        antennas_cmd = manager._calculate_blended_antennas(antennas)
++        manager._issue_control_command(head, antennas_cmd, body_yaw)
++        poses.append((head.copy(), antennas_cmd))
++    return poses
++
++
++def test_listening_moves_head_and_antennas_smoothly() -> None:
++    """While listening the antennas sway and the head tilts; both fade in and out without jumps."""
++    clock = [100.0]
++    manager = MovementManager(MagicMock())
++    manager._now = lambda: clock[0]
++    manager._last_listening_weight_time = clock[0]
++    manager._last_listening_blend_time = clock[0]
++    manager._last_listening_toggle_time = 0.0
++    manager.idle_inactivity_delay = 1e9  # keep breathing out of the picture
++
++    _run_ticks(manager, clock, 0.5)
++    manager._handle_command("set_listening", True, clock[0])
++    listening = _run_ticks(manager, clock, 2.0)
++    manager._handle_command("set_listening", False, clock[0])
++    after = _run_ticks(manager, clock, 1.0)
++
++    left_values = [antennas[0] for _, antennas in listening]
++    assert max(left_values) - min(left_values) > 0.1  # antennas are no longer frozen
++    assert not np.allclose(listening[-1][0], create_head_pose(0, 0, 0, 0, 0, 0, degrees=True))
++    assert np.allclose(after[-1][0], create_head_pose(0, 0, 0, 0, 0, 0, degrees=True), atol=1e-6)
++
++    sequence = listening + after
++    for (head_a, ant_a), (head_b, ant_b) in zip(sequence, sequence[1:]):
++        assert np.abs(head_b[:3, :3] - head_a[:3, :3]).max() < 0.02
++        assert max(abs(ant_b[0] - ant_a[0]), abs(ant_b[1] - ant_a[1])) < 0.02

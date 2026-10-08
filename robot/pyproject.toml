@@ -1,0 +1,21 @@
+# Nur Werkzeug-Konfiguration (kein Paket): das Tool wird von der Conversation-App
+# als Einzeldatei geladen. Lint-Regeln entsprechen denen der Conversation-App.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 119
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "C4", "D"]
+ignore = ["E501", "D100", "D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]
+
+[tool.ruff.lint.isort]
+length-sort = true
+lines-after-imports = 2
+no-lines-before = ["standard-library", "local-folder"]
+known-local-folder = ["reachy_mini_conversation_app"]
+split-on-trailing-comma = true

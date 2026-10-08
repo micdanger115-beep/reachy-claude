@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-bridge"
+version = "0.1.0"
+description = "Lokale, abgesicherte Bruecke: Reachy Mini -> Claude Code CLI auf dem PC."
+requires-python = ">=3.11"
+# Bewusst keine Laufzeit-Abhaengigkeiten (nur Standardbibliothek):
+# kleinere Angriffsflaeche, keine Supply-Chain-Risiken.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]
+
+[project.scripts]
+claude-bridge = "claude_bridge.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM"]
+ignore = [
+  "S603",  # subprocess ohne Shell ist hier gewollt und abgesichert (siehe runner.py)
+  "E501",  # Zeilenlaenge regelt "ruff format"
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S104", "S105", "S106", "S108"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
