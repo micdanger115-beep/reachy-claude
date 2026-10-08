@@ -27,9 +27,18 @@ offen bleibt. Bei Änderungen an Bridge, Tool oder Profil bitte mitpflegen.
 | T10 | Überlastung / Kostenexplosion | Rate-Limit (Standard 10/min), Body ≤ 64 KB, Prompt ≤ 4000 Zeichen, Lese-Timeout 15 s, ein Auftrag gleichzeitig, `--max-turns` | `server.py`, `config.py` |
 | T11 | Geheimnisse in Logs / Git | Prompts werden standardmäßig nicht geloggt; Token nie ausgegeben (Test); `.env`, `transcripts/`, `*.pem` in `.gitignore` | `server.py`, `.gitignore` |
 | T12 | Sprachdaten verlassen das Haus | lokales Sprach-Backend; Cloud-Tools im Profil deaktiviert | `README.md` §2 |
-| T13 | Supply-Chain | Bridge und Tool ohne Laufzeit-Abhängigkeiten (nur Standardbibliothek); Conversation-App auf geprüften Commit gepinnt | `pyproject.toml`, `README.md` |
+| T13 | Supply-Chain | Roboter-Tool nur Standardbibliothek; Bridge nur `websockets` (verbreitet, ohne eigene Abhängigkeiten, Versionsbereich begrenzt); Conversation-App auf geprüften Commit gepinnt | `pyproject.toml`, `README.md` |
+| T14 | `listen`: manipulierte Texte vom Roboter (z. B. ANSI-Escape-Sequenzen, die das Terminal steuern) oder riesige Nachrichten | alle Texte vom Roboter gelten als nicht vertrauenswürdig: Steuerzeichen werden entfernt, nur bekannte Ereignisse/Rollen werden angezeigt, Nachrichten max. 256 KB; `listen` sendet nur eine Statusabfrage und liest sonst nur mit | `listen.py`, `test_listen.py` |
 
 ## Bewusst offen / Restrisiken
+
+- **Die `/rpc`-Schnittstelle der Conversation-App (Port 7860) hat keine
+  Authentifizierung** und lauscht im WLAN. Jeder im Heimnetz kann dort das
+  Gespräch mitlesen und Reachy per `conversation.say` sprechen lassen. Das ist
+  Verhalten der Pollen-App, nicht unseres Codes. Wer das nicht will, startet die
+  App per SSH aus einem Ordner ohne `--ui` bzw. schirmt Port 7860 per Firewall ab
+  und nutzt `listen` über einen SSH-Tunnel (`ssh -L 7860:127.0.0.1:7860 …`,
+  dann `listen --robot 127.0.0.1`).
 
 - **Das speech-to-speech-Backend hat keine Authentifizierung.** Daher nur über
   den SSH-Tunnel bzw. auf `127.0.0.1` betreiben; im WLAN-Modus per

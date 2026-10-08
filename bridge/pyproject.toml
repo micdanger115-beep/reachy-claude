@@ -7,9 +7,10 @@ name = "claude-bridge"
 version = "0.1.0"
 description = "Lokale, abgesicherte Bruecke: Reachy Mini -> Claude Code CLI auf dem PC."
 requires-python = ">=3.11"
-# Bewusst keine Laufzeit-Abhaengigkeiten (nur Standardbibliothek):
-# kleinere Angriffsflaeche, keine Supply-Chain-Risiken.
-dependencies = []
+# Bewusst nur eine Laufzeit-Abhaengigkeit: websockets (verbreitet, selbst ohne
+# Abhaengigkeiten) fuer die Verbindung zu Reachy in "listen". Alles andere ist
+# Standardbibliothek -> kleine Angriffsflaeche.
+dependencies = ["websockets>=14,<17"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]

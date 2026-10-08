@@ -14,8 +14,61 @@ Erklärung anschließend vor.
 
 ---
 
+## Schnellstart – Stufe 1: Gespräch mit Reachy als Text sehen
+
+Bevor Claude ins Spiel kommt, prüfen wir nur eins: **Versteht Reachy dich, und
+was antwortet er?** Dafür brauchst du weder Token noch Claude, Tunnel oder
+Sprach-Backend auf dem PC – am Roboter wird nichts verändert.
+
+**Auf Reachy:** Die **Conversation-App** ganz normal im Reachy-Dashboard
+installieren und starten (Standard-Einstellungen, Sprache über Hugging Face).
+
+**Auf dem Windows-PC** (Python ≥ 3.11, im selben WLAN wie Reachy):
+
+```powershell
+git clone https://github.com/micdanger115-beep/reachy-claude.git
+cd reachy-claude\bridge
+powershell -ExecutionPolicy Bypass -File .\listen.ps1
+```
+
+Beim ersten Start richtet das Skript alles selbst ein. Danach siehst du:
+
+```
+Verbunden mit ws://reachy-mini.local:7860/rpc
+10:15:00  Sprachdienst verbunden (Hugging-Face-Cloud). Sprich mit Reachy!
+10:15:02  Du:     Hallo Reachy, wie geht's?
+10:15:04  Reachy: Mir geht's prima! Was kann ich für dich tun?
+```
+
+Das Gespräch wird zusätzlich in `bridge\transcripts\gespraech-<Datum>.md`
+gespeichert. Beenden mit **Strg+C**.
+
+| Option | Wirkung |
+|---|---|
+| `-Robot 192.168.1.30` | Reachy per IP ansprechen, falls `reachy-mini.local` nicht gefunden wird |
+| `-ShowTurns` | zusätzlich anzeigen, ob Reachy gerade zuhört, nachdenkt oder spricht |
+
+Ohne Skript (z. B. Linux/macOS): `claude-bridge listen --robot reachy-mini.local --save gespraech.md`
+
+| Meldung | Bedeutung / Lösung |
+|---|---|
+| „Reachy nicht erreichbar … Neuer Versuch“ | Conversation-App läuft nicht, oder Name/IP falsch → im Dashboard starten bzw. `-Robot <IP>` |
+| „Sprachdienst ist nicht verbunden“ | Reachy erreicht seinen Sprachdienst nicht (Internet/Hugging-Face-Login am Roboter prüfen) |
+| Verbunden, aber keine Zeilen | Mikrofon stumm? In der Weboberfläche der App (`http://reachy-mini.local:7860`) prüfen |
+
+> **Datenschutz/Sicherheit in Stufe 1:** Sprache geht hier noch über die
+> Hugging-Face-Cloud (Standard der App). Die Schnittstelle der App
+> (Port 7860) ist im WLAN ohne Passwort erreichbar – das ist so in der
+> Pollen-App angelegt; `listen` liest nur mit. Details: [`SECURITY.md`](SECURITY.md).
+
+**Stufe 2** (Claude anbinden) und **Stufe 3** (Sprache lokal statt Cloud)
+beschreiben die Abschnitte 4–6.
+
+---
+
 ## Inhalt
 
+0. [Schnellstart – Stufe 1](#schnellstart--stufe-1-gespräch-mit-reachy-als-text-sehen)
 1. [Wie es funktioniert](#1-wie-es-funktioniert)
 2. [Welche Daten wohin gehen](#2-welche-daten-wohin-gehen)
 3. [Voraussetzungen](#3-voraussetzungen)
@@ -294,17 +347,19 @@ reachy-claude/
 ├── README.md               diese Datei
 ├── SECURITY.md             Bedrohungsmodell & Maßnahmen
 ├── start-tunnel.ps1        SSH-Tunnel (Windows)
-├── bridge/                 PC-Dienst (Python ≥3.11, nur Standardbibliothek)
+├── bridge/                 PC-Dienst (Python ≥3.11, einzige Abhängigkeit: websockets)
 │   ├── src/claude_bridge/
+│   │   ├── listen.py       Stufe 1: Gespräch von Reachy mitlesen (WebSocket /rpc)
 │   │   ├── config.py       .env laden + strenge Validierung
 │   │   ├── signing.py      HMAC-Protokoll v1, Replay-Schutz
 │   │   ├── runner.py       claude -p sicher aufrufen, Sitzungen, Timeout
 │   │   ├── speech.py       Vorlesetext aus der Antwort
 │   │   ├── server.py       HTTP-Server (IP-Allowlist, Limits, ein Auftrag gleichzeitig)
-│   │   └── __main__.py     CLI: serve | check | gen-token
+│   │   └── __main__.py     CLI: listen | serve | check | gen-token
 │   ├── tests/              pytest inkl. Fake-Claude-CLI (auch als .cmd unter Windows)
 │   ├── .env.example
-│   └── start-bridge.ps1
+│   ├── listen.ps1          Stufe 1 starten (Windows)
+│   └── start-bridge.ps1    Stufe 2 starten (Windows)
 ├── robot/
 │   ├── external_tools/ask_claude.py           Tool (Einzeldatei, nur stdlib)
 │   ├── external_profiles/claude_coder/profile.md
@@ -339,7 +394,9 @@ Windows**, Roboter-Tool auf Ubuntu).
 
 Design-Entscheidungen:
 
-- **Keine Laufzeit-Abhängigkeiten** in Bridge und Tool → minimale Angriffsfläche.
+- **Minimale Abhängigkeiten**: Roboter-Tool nur Standardbibliothek; Bridge nur `websockets`
+  (für `listen`, selbst ohne weitere Abhängigkeiten) → kleine Angriffsfläche.
+- **Stufenweise Inbetriebnahme**: `listen` (nur mitlesen) → `serve` (Claude) → lokale Sprache.
 - **Dependency Injection**: Der Server kennt nur das `AskService`-Protokoll;
   Tests ersetzen Claude durch Fakes.
 - **Unveränderliche Konfiguration** (`frozen` Dataclass), „fail fast“ bei unsicheren Werten.
@@ -349,9 +406,16 @@ Design-Entscheidungen:
 
 ## 9. Stand & nächste Schritte
 
+**Verifiziert (2026-10-08) – Stufe 1 `listen`**
+
+- 19 neue Tests mit nachgebautem Reachy (Anzeige, Mitschrift, Neuverbinden, Steuerzeichen-Filter) ✅
+- Lauf gegen den **echten** JSON-RPC-Server aus dem Reachy-SDK (`reachy_mini.apps.jsonrpc_server`,
+  so wie ihn die Conversation-App `5eb39ed` einbindet) ✅
+- Noch nicht am echten Reachy getestet
+
 **Verifiziert (2026-10-02)**
 
-- Bridge: 61 Tests, ruff, mypy `--strict` ✅
+- Bridge: 80 Tests (inkl. `listen`), ruff, mypy `--strict` ✅
 - Roboter-Tool: 16 Tests inkl. Integration mit Conversation-App `5eb39ed` ✅
 - Patch: Upstream-Suite 459 ✅ (3 Avatar-Tests schlagen dort auch ohne Patch fehl – Umgebungsthema der Upstream-Suite)
 - **Echter End-to-End-Lauf** Tool → Bridge → Claude Code CLI 2.1.287:

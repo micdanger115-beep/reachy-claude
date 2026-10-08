@@ -9,6 +9,15 @@ Status: **FREIGEGEBEN & umgesetzt** (v0.1, 2026-10-02) – Details/Stand siehe `
 4. Verbindung: **gleiches WLAN** → umgesetzt als SSH-Rückwärtstunnel (verschlüsselt,
    nichts im WLAN offen); direkter WLAN-Modus mit IP-Allowlist/TLS als Alternative.
 
+### Stufenweise Inbetriebnahme (Wunsch des Nutzers, 2026-10-08)
+- **Stufe 1 `claude-bridge listen`**: nur mit Reachy verbinden und das Gespräch als Text
+  anzeigen (du / Reachy). Quelle: JSON-RPC-WebSocket der Conversation-App
+  (`ws://<roboter>:7860/rpc`, Benachrichtigungen `conversation.transcript` {role, text, final}
+  und `conversation.turn`; Statusabfrage `conversation.status`). Am Roboter keine Änderung.
+  Entscheidungen: Bibliothek `websockets` statt Eigenbau; Änderung auf eigenem Branch.
+- **Stufe 2 `serve`**: Claude anbinden (Profil + Tool + Bridge).
+- **Stufe 3**: Sprache lokal (speech-to-speech) statt HF-Cloud.
+
 ### Erkenntnisse bei der Umsetzung
 - Claude Code CLI 2.1.287 kennt `--permission-mode default` nicht mehr; verwendet
   wird `dontAsk` (alles Nicht-Erlaubte wird ohne Rückfrage verweigert).
