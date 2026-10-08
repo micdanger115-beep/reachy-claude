@@ -11,3 +11,5 @@ aufnahmen/
 *.wav
 !app/tests/data/*.wav
 app/voices/
+app/einstellungen.toml
+app/mitschriften/

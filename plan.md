@@ -11,7 +11,8 @@
 - [x] Schritt 1: Audio-Test `reachy-claude check-audio` – **am Reachy erfolgreich** (Sprache −14…−18 dB, Raum ~−40 dB)
 - [x] Schritt 2: Spracherkennung + Aktivierungswort `reachy-claude listen` – **am Reachy erfolgreich** (GPU, „Claude“ zuverlässig)
 - [x] Schritt 3: Sprachausgabe `reachy-claude say` / Antworten in `listen` – wartet auf Test am Reachy
-- [ ] Schritt 4: Claude anbinden
+- [x] Schritt 3 am Reachy bestaetigt (Satz vollstaendig, Aussprache passt)
+- [x] Schritt 4: Claude anbinden (`listen -Projekt …`) – echter CLI-Durchlauf ok; wartet auf Test am Reachy
 - [ ] Schritt 5: Bewegungen
 - [ ] Schritt 6: Startskript, Feinschliff
 
@@ -19,6 +20,15 @@
 - Nutzer bemerkte mehr Ethernet-Last bei laufender App. Ursache: `GstWebRTCClient` empfängt fest
   Kamera-Video (H.264) + Audio; kein „nur Audio“-Modus im SDK. Optionen: so lassen / Video-Transceiver
   per SDK-Interna inaktiv setzen / Feature-Wunsch bei Pollen. **Entscheidung: so lassen.**
+
+### Erkenntnisse Schritt 4
+- v1-Bausteine uebernommen: `claude.py` (aus legacy/bridge runner.py, ohne Token/HTTP) und `spoken.py`
+  (speech.py) inkl. Tests und Fake-CLI (`.cmd` unter Windows).
+- Einstellungen in `app/einstellungen.toml` (tomllib); `-Projekt` speichert, Handaenderungen bleiben erhalten.
+- `assistant.py`: Claude im Thread, alle 45 s „Claude arbeitet noch.“; Terminal zeigt die volle Antwort
+  (Einrueckung bleibt, Steuerzeichen raus), Vorlesen nur SPRECHTEXT; „neues Thema“ (Hoeflichkeitswoerter
+  wie „bitte“ sind kein Auftrag – per Test gefunden).
+- Echter Durchlauf mit Claude Code CLI: 3 Auftraege (aendern 16 s, Folgefrage 8 s, neues Thema 18 s) ok.
 
 ### Erkenntnisse Schritt 3
 - Piper 1.8 (`PiperVoice.load/synthesize`, Chunks mit `audio_float_array`), Stimme `de_DE-thorsten-medium`

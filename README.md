@@ -15,7 +15,7 @@ Antwort vor.
 
 ---
 
-## Stand: Schritt 3 von 6
+## Stand: Schritt 4 von 6
 
 Die App wird schrittweise gebaut; jeden Schritt kannst du selbst am echten Reachy testen.
 
@@ -23,10 +23,57 @@ Die App wird schrittweise gebaut; jeden Schritt kannst du selbst am echten Reach
 |---|---|---|
 | 1 | **Audio-Test:** PC hört Reachys Mikrofon, spielt auf Reachys Lautsprecher | ✅ am Reachy getestet |
 | 2 | **Spracherkennung + Aktivierungswort „Claude“**, Ausgabe als Text | ✅ am Reachy getestet (GPU) |
-| 3 | **Sprachausgabe auf Reachy** (deutsche Stimme) | ✅ fertig – bitte testen |
-| 4 | Claude anbinden | geplant |
+| 3 | **Sprachausgabe auf Reachy** (deutsche Stimme) | ✅ am Reachy getestet |
+| 4 | **Claude anbinden** – Reachy liest Claudes Antwort vor | ✅ fertig – bitte testen |
 | 5 | Lebendige Bewegungen (zuhören, nachdenken, sprechen) | geplant |
 | 6 | Ein Startskript für alles, Feinschliff | geplant |
+
+---
+
+## Schritt 4: Mit Claude arbeiten
+
+**Voraussetzung:** Claude Code ist auf dem PC installiert und angemeldet (einmal `claude`
+im Terminal starten). Am besten ist der Projektordner ein Git-Repository – dann siehst du
+jede Änderung mit `git diff` und kannst sie zurücknehmen.
+
+```powershell
+git pull
+# einmalig den Projektordner festlegen (wird in app\einstellungen.toml gespeichert):
+powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen -Projekt "D:\code\mein-projekt"
+# danach genügt:
+powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen
+```
+
+So läuft ein Auftrag:
+
+```
+Du:     Claude, füge in calc.py eine Funktion mul hinzu.
+  -> Auftrag fuer Claude: füge in calc.py eine Funktion mul hinzu.
+Reachy: Ich frage Claude.
+Claude:
+  Ich habe `mul(a, b)` in `calc.py` unter `add` eingefügt. ...
+Reachy: Ich habe in der Datei calc.py die Funktion mul hinzugefügt. Sie multipliziert zwei Zahlen ...
+```
+
+- **Im Terminal** steht Claudes vollständige Antwort (auch Code), **vorgelesen** werden nur
+  2–4 zusammenfassende Sätze. Alles landet zusätzlich in `app\mitschriften\<Datum>.md`.
+- **Folgefragen** („Claude, was hast du gerade geändert?“) setzen dieselbe Unterhaltung fort.
+- **„Claude, neues Thema: …“** (oder „neue Unterhaltung“, „von vorne“) beginnt eine frische Unterhaltung.
+- Dauert es länger, sagt Reachy alle 45 s „Claude arbeitet noch.“ Abbruch nach 15 Minuten.
+- Es läuft immer **ein Auftrag** zur Zeit; währenddessen hört Reachy nicht zu.
+
+**Was Claude darf** (fest eingebaut): Dateien im Projektordner **lesen** und – mit Rechten
+`edit` (Standard) – **bearbeiten/anlegen**. **Nie**: Shell-Befehle, Internet, Zusatz-Server
+(MCP). Alles andere wird ohne Rückfrage verweigert.
+
+| Option | Wirkung |
+|---|---|
+| `-Projekt "D:\pfad"` | Projektordner festlegen/wechseln (gespeichert) |
+| `-Rechte read` / `-Rechte edit` | nur lesen / auch bearbeiten (gespeichert) |
+| `-OhneClaude` | Test ohne Claude: Reachy wiederholt nur den Auftrag |
+
+In `app\einstellungen.toml` lassen sich außerdem `timeout_minuten` und `claude_programm`
+(Pfad zu `claude.exe`, falls nicht gefunden) eintragen.
 
 ---
 
@@ -193,7 +240,11 @@ reachy-claude/
 │   │   ├── segmenter.py     Sätze aus dem Mikrofon-Strom schneiden (Pegel, lernt Grundrauschen)
 │   │   ├── stt.py           Spracherkennung (faster-whisper; GPU, sonst CPU)
 │   │   ├── wakeword.py      Aktivierungswort „Claude“ (tolerant: Cloud, Klod …)
-│   │   ├── tts.py           Sprachausgabe (Piper, deutsche Stimme, 16 kHz)
+│   │   ├── tts.py           Sprachausgabe (Piper, deutsche Stimme, 16 kHz, Aussprache-Liste)
+│   │   ├── settings.py      Projektordner/Rechte (einstellungen.toml), strenge Prüfung
+│   │   ├── claude.py        Claude Code CLI sicher aufrufen (aus v1): dontAsk, keine Shell/Web/MCP, Timeout
+│   │   ├── spoken.py        Vorlesetext aus Claudes Antwort (SPRECHTEXT-Zeile, aus v1)
+│   │   ├── assistant.py     Schritt 4: Auftrag → Claude (mit Zwischenmeldungen) → Terminal + Vorlesen
 │   │   └── listener.py      Mikrofon-Thread → Sätze → Text → Auftrag; Voice: Reachy spricht (ohne Selbstgespräch)
 │   ├── tests/               pytest mit nachgebautem Reachy und simulierter Uhr
 │   │   └── data/            echte Sprach-Testaufnahme (Regressionstest)
@@ -212,6 +263,8 @@ Lautsprecher und eine Uhr, damit nichts wirklich warten muss. CI
 (`.github/workflows/tests.yml`) läuft auf Ubuntu und Windows; unter Windows wird
 zusätzlich die **komplette Installation inkl. Reachy-SDK** und das Startskript unter
 Windows PowerShell 5.1 geprüft.
+
+**Verifiziert Schritt 4 (2026-10-08):** 104 Tests ✅ (inkl. v1-Tests des Claude-Aufrufs, unter Windows mit `.cmd`-Startdatei) · **echter Durchlauf mit Claude Code CLI**: Datei geändert, Folgefrage mit Kontext, „neues Thema“ – Sprechtexte mit Piper vertont ✅.
 
 **Verifiziert Schritt 3 (2026-10-08):** 55 Tests ✅ (u. a. „Reachy hört sich nicht selbst zu“ – Gegenprobe: ohne Echo-Löschen wird der Test rot) · echte Piper-Synthese lokal ✅ · CI: Piper thorsten-medium + Rundweg Piper → Whisper → Aktivierungswort.
 

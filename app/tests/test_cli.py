@@ -46,3 +46,29 @@ def test_check_audio_end_to_end_with_fake_robot(
     out = capsys.readouterr().out
     assert "Verbunden." in out and "Fertig." in out
     assert (tmp_path / "a.wav").exists()
+
+
+def test_listen_needs_project_and_saves_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from conftest import FAKE_CLAUDE
+
+    from reachy_claude.settings import load_settings
+
+    monkeypatch.chdir(tmp_path)
+    # Ohne Projektordner: klare Meldung, kein Modell-Download, kein Verbindungsaufbau.
+    assert cli.main(["listen"]) == 1
+    assert "-Projekt" in capsys.readouterr().out
+
+    project = tmp_path / "projekt"
+    project.mkdir()
+    (tmp_path / "einstellungen.toml").write_text(
+        f'[claude]\nclaude_programm = "{FAKE_CLAUDE.as_posix()}"\n', encoding="utf-8"
+    )
+    settings = cli.prepare_claude(cli.build_parser().parse_args(["listen", "--project", str(project)]))
+    assert settings is not None and settings.workdir == project.resolve()
+    assert load_settings(tmp_path / "einstellungen.toml").workdir == project.resolve()  # gespeichert
+
+    settings = cli.prepare_claude(cli.build_parser().parse_args(["listen", "--permission", "read"]))
+    assert settings is not None and settings.permission.value == "read"
+    assert "nur lesen" in capsys.readouterr().out

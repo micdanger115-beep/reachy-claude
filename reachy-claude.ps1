@@ -2,6 +2,7 @@
 #   powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 check-audio
 #   powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 check-audio -Robot 192.168.1.30
 #   powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 say -Text "Hallo, ich bin Reachy"
+#   powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen -Projekt "D:\code\mein-projekt"   (einmalig)
 #   powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen
 # Beim ersten Start wird eine eigene Python-Umgebung in app\.venv eingerichtet.
 param(
@@ -13,6 +14,10 @@ param(
     [ValidateSet("auto", "cuda", "cpu")]
     [string]$Device = "auto",
     [string]$Text = "Hallo, ich bin Reachy. Ich kann jetzt sprechen.",
+    [string]$Projekt = "",
+    [ValidateSet("", "read", "edit")]
+    [string]$Rechte = "",
+    [switch]$OhneClaude,
     [switch]$Silent,
     [switch]$Details
 )
@@ -30,6 +35,9 @@ if ($Command -eq "say") { $cliArgs += $Text }
 if ($Command -eq "listen") {
     $cliArgs += @("--device", $Device)
     if ($Silent) { $cliArgs += "--silent" }
+    if ($Projekt) { $cliArgs += @("--project", $Projekt) }
+    if ($Rechte) { $cliArgs += @("--permission", $Rechte) }
+    if ($OhneClaude) { $cliArgs += "--no-claude" }
 }
 & $python @cliArgs
 exit $LASTEXITCODE
