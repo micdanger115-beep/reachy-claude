@@ -28,15 +28,11 @@ def test_full_check_records_saves_and_plays_back(tmp_path: Path) -> None:
     saved, rate = load_wav(tmp_path / "test.wav")
     assert rate == SAMPLE_RATE and saved.size == pytest.approx(2 * SAMPLE_RATE, abs=SAMPLE_RATE * 0.05)
 
-    assert len(media.pushed) == 2  # 1) Toene + Aufnahme in einem Stueck, 2) Mess-Piepton
+    assert len(media.pushed) == 1  # Toene + Aufnahme in einem Stueck
     played = media.pushed[0]
     assert played.dtype == np.float32 and played.ndim == 1
     assert played.size > saved.size  # Toene vor der Aufnahme
-    assert media.pushed[1].size == SAMPLE_RATE // 5  # 0,2-s-Piepton
-    assert media.calls[:4] == ["start_recording", "stop_recording", "start_playing", "stop_playing"]
-    # Dauerton im Fake-Mikrofon -> kein Einsatz des Pieptons messbar, wird verstaendlich gemeldet
-    assert result.round_trip_s is None  # type: ignore[attr-defined]
-    assert any("nicht erkannt" in line for line in lines)
+    assert media.calls == ["start_recording", "stop_recording", "start_playing", "stop_playing"]
 
 
 def test_quiet_microphone_is_reported(tmp_path: Path) -> None:

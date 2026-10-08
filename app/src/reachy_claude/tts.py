@@ -7,6 +7,7 @@ heruntergeladen und in ``app/voices`` abgelegt; danach wird nur noch lokal gerec
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -21,6 +22,9 @@ DEFAULT_VOICE = "de_DE-thorsten-medium"
 VOICES_REPO = "rhasspy/piper-voices"
 DEFAULT_VOICE_DIR = Path("voices")
 TARGET_PEAK = 0.8  # etwas Luft nach oben, damit Reachys Lautsprecher nicht uebersteuert
+PRONUNCIATION_FILE = Path("aussprache.txt")
+# Englische Namen spricht die deutsche Stimme sonst "deutsch" aus (Re-ach-ue).
+DEFAULT_PRONUNCIATIONS = {"Reachy": "Rietschi", "Claude": "Klohd"}
 
 
 class Speaker(Protocol):
@@ -38,6 +42,32 @@ class TtsConfig:
     voice: str = DEFAULT_VOICE
     voice_dir: Path = DEFAULT_VOICE_DIR
     length_scale: float = 1.0
+    pronunciation_file: Path | None = PRONUNCIATION_FILE
+
+
+def load_pronunciations(path: Path | None) -> dict[str, str]:
+    """Standard-Aussprachen plus Eintraege aus ``aussprache.txt`` (``Wort = Lautschrift``)."""
+    table = dict(DEFAULT_PRONUNCIATIONS)
+    if path is None or not path.is_file():
+        return table
+    for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        word, sep, spoken = line.partition("=")
+        if not sep or not word.strip() or not spoken.strip():
+            logger.warning("%s Zeile %d ignoriert (Format: Wort = Lautschrift): %r", path, number, raw)
+            continue
+        table = {k: v for k, v in table.items() if k.lower() != word.strip().lower()}
+        table[word.strip()] = spoken.strip()
+    return table
+
+
+def apply_pronunciations(text: str, table: dict[str, str]) -> str:
+    """Ganze Woerter (ohne Ruecksicht auf Gross-/Kleinschreibung) durch ihre Lautschrift ersetzen."""
+    for word in sorted(table, key=len, reverse=True):
+        text = re.sub(rf"(?<!\w){re.escape(word)}(?!\w)", table[word], text, flags=re.IGNORECASE)
+    return text
 
 
 def voice_repo_path(voice: str) -> str:
@@ -95,6 +125,7 @@ class PiperSpeaker:
 
             voice = PiperVoice.load(ensure_voice(self._config))
         self._voice = voice
+        self._pronunciations = load_pronunciations(self._config.pronunciation_file)
         self.description = f"Piper '{self._config.voice}'"
 
     def synthesize(self, text: str) -> Audio:
@@ -103,7 +134,8 @@ class PiperSpeaker:
             return np.zeros(0, dtype=np.float32)
         from piper import SynthesisConfig
 
-        chunks = list(self._voice.synthesize(text, SynthesisConfig(length_scale=self._config.length_scale)))
+        spoken = apply_pronunciations(text, self._pronunciations)
+        chunks = list(self._voice.synthesize(spoken, SynthesisConfig(length_scale=self._config.length_scale)))
         if not chunks:
             return np.zeros(0, dtype=np.float32)
         audio = np.concatenate([np.asarray(c.audio_float_array, dtype=np.float32) for c in chunks])

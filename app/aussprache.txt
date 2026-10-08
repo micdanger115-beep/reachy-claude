@@ -1,0 +1,7 @@
+# Aussprache fuer Reachys deutsche Stimme (Piper).
+# Format:  Wort = so wird es gesprochen
+# Gross-/Kleinschreibung egal; nur ganze Woerter werden ersetzt.
+# Aenderungen gelten beim naechsten Start. Klingt etwas falsch? Lautschrift hier anpassen.
+
+Reachy = Rietschi
+Claude = Klohd

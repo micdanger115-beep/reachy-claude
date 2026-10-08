@@ -105,3 +105,33 @@ def test_ensure_voice_downloads_once(tmp_path: Path, monkeypatch: pytest.MonkeyP
     ]
     ensure_voice(config)
     assert len(calls) == 2  # zweiter Aufruf ohne Download
+
+
+def test_pronunciations_replace_whole_words_case_insensitive() -> None:
+    from reachy_claude.tts import DEFAULT_PRONUNCIATIONS, apply_pronunciations
+
+    text = "Hallo, ich bin Reachy! REACHY und reachys Freund Claude; Reachymini bleibt."
+    assert apply_pronunciations(text, DEFAULT_PRONUNCIATIONS) == (
+        "Hallo, ich bin Rietschi! Rietschi und reachys Freund Klohd; Reachymini bleibt."
+    )
+
+
+def test_pronunciation_file_overrides_and_extends(tmp_path: Path) -> None:
+    from reachy_claude.tts import load_pronunciations
+
+    file = tmp_path / "aussprache.txt"
+    file.write_text(
+        "# Kommentar\nreachy = Riitschi\nmain.py = Mehn Punkt Pei\nkaputt\n = leer\n", encoding="utf-8"
+    )
+    table = load_pronunciations(file)
+    assert table["reachy"] == "Riitschi" and "Reachy" not in table  # ueberschrieben
+    assert table["main.py"] == "Mehn Punkt Pei"
+    assert table["Claude"] == "Klohd"  # Standard bleibt
+    assert load_pronunciations(tmp_path / "fehlt.txt") == {"Reachy": "Rietschi", "Claude": "Klohd"}
+
+
+def test_speaker_uses_pronunciation_but_not_for_display(tmp_path: Path) -> None:
+    voice = FakeVoice()
+    speaker = PiperSpeaker(TtsConfig(pronunciation_file=tmp_path / "keine.txt"), voice=voice)
+    speaker.synthesize("Ich bin Reachy.")
+    assert voice.texts == ["Ich bin Rietschi."]

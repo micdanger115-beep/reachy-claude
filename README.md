@@ -46,6 +46,9 @@ powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen
 - Damit Reachy sich nicht selbst zuhört, wird alles verworfen, was das Mikrofon während
   seiner eigenen Ansage und 0,6 s danach aufnimmt.
 - `-Silent`: Reachy antwortet nur als Text, ohne Stimme.
+- **Aussprache:** Englische Wörter spricht die deutsche Stimme „deutsch“ aus. In
+  `app\aussprache.txt` steht, wie sie gesprochen werden sollen (z. B. `Reachy = Rietschi`,
+  `Claude = Klohd`). Die Datei kannst du selbst ergänzen; gilt ab dem nächsten Start.
 
 Bitte achte auf: Klingt die Stimme gut/verständlich? Reagiert Reachy auf seine eigene
 Ansage (sollte er nicht)? Wie lange dauert es vom Satzende bis Reachy antwortet?
@@ -124,8 +127,6 @@ einige Minuten (das SDK bringt GStreamer für Audio/Video mit).
    ```
 2. Die Aufnahme wird auf dem PC gespeichert: `app\aufnahmen\audio-test-<Zeit>.wav`.
 3. Reachy spielt **zwei Töne** und danach **deine Aufnahme** ab.
-4. Reachy piept kurz; die App misst, wann der Ton wieder im Mikrofon ankommt
-   („Verzögerung Lautsprecher -> Mikrofon“) – daraus ergeben sich Wartezeiten der App.
 
 Hörst du beides aus Reachy, funktioniert Audio – dann kann Schritt 2 kommen.
 
