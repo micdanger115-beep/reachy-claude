@@ -89,9 +89,14 @@ Beispiel: `.\Reachy-Claude.cmd listen -Projekt "D:\code\anderes-projekt" -Rechte
 |---|---|
 | „Claude, *Auftrag*“ | gibt den Auftrag an Claude, liest die Antwort vor |
 | „Claude.“ … *Auftrag* | zweistufig: erst „Claude“, dann innerhalb von 8 s den Auftrag |
+| „Claude, *langer Auftrag* … *Denkpause* … *weiter*“ | hängt an: Der Auftrag geht erst los, wenn du **ca. 3 s** nichts mehr sagst (bis zu 2 Minuten am Stück) |
 | „Claude, **stopp**“ / „abbrechen“ / „hör auf“ | bricht den laufenden Auftrag ab („Abgebrochen.“) |
 | „Claude, **wiederhole**“ / „nochmal“ / „wie bitte?“ | liest die letzte Antwort nochmal vor |
 | „Claude, **neues Thema**: …“ | beginnt eine neue Unterhaltung mit Claude |
+
+Lange Aufträge kannst du in Ruhe diktieren: Nach dem Satz wartet Reachy noch 2 s
+(„hoere weiter zu“ im Terminal); sprichst du weiter, wird angehängt. „Stopp“ und
+„wiederhole“ wirken sofort.
 
 Während Claude arbeitet, hört Reachy weiter zu (für „stopp“). Ein zweiter Auftrag wird erst
 angenommen, wenn der erste fertig ist. Während Reachy selbst spricht, hört er nicht zu –

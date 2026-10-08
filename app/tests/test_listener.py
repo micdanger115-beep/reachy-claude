@@ -3,7 +3,7 @@ import time
 
 import numpy as np
 import pytest
-from test_segmenter import noise, speech
+from test_segmenter import PAUSE, noise, speech
 
 from reachy_claude.audio import SAMPLE_RATE, Audio
 from reachy_claude.listener import WAKE_FOLLOW_UP_S, CommandParser, listen
@@ -90,7 +90,7 @@ class ScriptedTranscriber:
 
 
 def test_listen_end_to_end_with_fake_robot() -> None:
-    audio = np.concatenate([noise(1.0), speech(1.2), noise(1.2), speech(1.0), noise(1.2)])
+    audio = np.concatenate([noise(1.0), speech(1.2), noise(PAUSE), speech(1.0), noise(PAUSE)])
     media = ScriptedMedia(audio)
     stop = threading.Event()
     transcriber = ScriptedTranscriber(["Was läuft im Fernsehen?", "Claude, schreib einen Test"], stop)
@@ -172,9 +172,9 @@ def test_reachy_does_not_listen_to_itself() -> None:
     """Was das Mikrofon waehrend Reachys Antwort aufnimmt (Echo), wird verworfen."""
     media = PhasedMedia(
         [
-            np.concatenate([noise(1.0), speech(1.0), noise(1.0)]),  # Auftrag
+            np.concatenate([noise(1.0), speech(1.0), noise(PAUSE)]),  # Auftrag
             np.concatenate([speech(1.0), noise(1.0)]),  # Echo, waehrend Reachy spricht
-            np.concatenate([noise(0.5), speech(2.5), noise(1.2)]),  # spaeter: neuer, laengerer Auftrag
+            np.concatenate([noise(0.5), speech(2.5), noise(PAUSE)]),  # spaeter: neuer, laengerer Auftrag
         ]
     )
     stop = threading.Event()
@@ -212,7 +212,9 @@ def test_reachy_does_not_listen_to_itself() -> None:
         threading.Thread(target=later, daemon=True).start()
 
     worker = threading.Thread(
-        target=listen, args=(media, transcriber, lambda _: None, on_command, stop), kwargs={"clock": clock}
+        target=listen,
+        args=(media, transcriber, lambda _: None, on_command, stop),
+        kwargs={"clock": clock, "follow_on_s": 0.0},  # hier geht es ums Echo, nicht um den Nachlauf
     )
     worker.start()
     worker.join(timeout=10)
@@ -223,7 +225,7 @@ def test_reachy_does_not_listen_to_itself() -> None:
 
 
 def test_events_for_speech_and_wake_word() -> None:
-    audio = np.concatenate([noise(1.0), speech(1.0), noise(1.2)])
+    audio = np.concatenate([noise(1.0), speech(1.0), noise(PAUSE)])
     stop = threading.Event()
     events: list[str] = []
     wakes: list[int] = []
@@ -251,7 +253,7 @@ def test_on_wake_not_called_without_wake_word() -> None:
 def test_listen_ignores_audio_while_muted() -> None:
     """Spricht Reachy aus dem Hintergrund (Claude arbeitet), wird das Echo nicht erkannt."""
     chunk_s = 0.02
-    audio = np.concatenate([noise(1.0), speech(1.0), noise(1.2), speech(2.5), noise(1.2)])
+    audio = np.concatenate([noise(1.0), speech(1.0), noise(PAUSE), speech(2.5), noise(PAUSE)])
     media = ScriptedMedia(audio)
     stop = threading.Event()
 
@@ -329,3 +331,71 @@ def test_speech_gate_speaks_one_sentence_at_a_time() -> None:
     for t in threads:
         t.join()
     assert not overlap
+
+
+# --- Nachlauf: lange Auftraege mit Denkpausen ---
+
+
+SPEEDUP = 20
+
+
+class PacedMedia(ScriptedMedia):
+    """Liefert wie ein echtes Mikrofon nach und nach (hier SPEEDUP-mal schneller als Echtzeit)."""
+
+    def get_audio_sample(self) -> Audio | None:
+        time.sleep(0.02 / SPEEDUP)
+        return super().get_audio_sample()
+
+
+def run_listen(audio: Audio, texts: list[str], **kwargs: object) -> tuple[list[tuple[str, bool]], list[str]]:
+    """Zuhoeren auf vorbereitetem Audio; liefert (Auftrag, war_stop_schon_gesetzt) und die Ausgabe."""
+    stop = threading.Event()
+    transcriber = ScriptedTranscriber(list(texts), threading.Event())  # setzt NICHT stop
+    commands: list[tuple[str, bool]] = []
+    lines: list[str] = []
+
+    def on_command(command: str) -> None:
+        commands.append((command, stop.is_set()))
+
+    kwargs.setdefault("clock", lambda: time.monotonic() * SPEEDUP)  # Uhr so schnell wie das Audio
+    worker = threading.Thread(
+        target=listen, args=(PacedMedia(audio), transcriber, lines.append, on_command, stop), kwargs=kwargs
+    )
+    worker.start()
+    worker.join(timeout=len(audio) / SAMPLE_RATE / SPEEDUP + 3)  # danach ist das Audio sicher verarbeitet
+    stop.set()
+    worker.join(timeout=5)
+    assert not worker.is_alive()
+    return commands, lines
+
+
+def test_continuation_after_thinking_pause_is_appended() -> None:
+    think = 1.6  # laenger als das Satzende (1,2 s), kuerzer als Satzende + Nachlauf
+    audio = np.concatenate(
+        [noise(1.0), speech(1.5), noise(think), speech(1.2), noise(think), speech(1.0), noise(4.0)]
+    )
+    commands, lines = run_listen(
+        audio, ["Claude, schreib eine Funktion,", "die zwei Zahlen addiert.", "Claude, und teste sie."]
+    )
+    # vor dem Ende ausgeloest (nicht erst beim Aufraeumen), ein einziger zusammengesetzter Auftrag
+    assert commands == [("schreib eine Funktion, die zwei Zahlen addiert. und teste sie.", False)]
+    assert any("hoere weiter zu" in line for line in lines)
+
+
+def test_long_pause_ends_the_command() -> None:
+    audio = np.concatenate([noise(1.0), speech(1.5), noise(4.5), speech(1.0), noise(PAUSE)])
+    commands, lines = run_listen(audio, ["Claude, erklär main.py", "Was läuft im Fernsehen?"])
+    assert commands == [("erklär main.py", False)]
+    assert any("ignoriert" in line for line in lines)  # gehoert nicht mehr zum Auftrag
+
+
+def test_control_words_skip_the_follow_on() -> None:
+    audio = np.concatenate([noise(1.0), speech(0.8), noise(PAUSE), speech(1.5), noise(PAUSE)])
+    commands, _ = run_listen(
+        audio,
+        ["Claude, stopp", "Claude, lange Aufgabe"],
+        follow_on_s=100.0,
+        immediate=lambda command: command.lower().startswith("stopp"),
+    )
+    # "stopp" sofort; der normale Auftrag wartet auf den Nachlauf und geht erst beim Ende raus
+    assert commands == [("stopp", False), ("lange Aufgabe", True)]

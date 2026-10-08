@@ -18,7 +18,26 @@
 - [x] Sicherheits-Nachbesserung (vor Schritt 6, freigegeben 2026-10-08): Projekt-Einstellungen/Hooks ignoriert,
       Steuer-Ordner gesperrt; Reachy-Luecken in SECURITY.md (S10)
 - [x] Schritt 6: Doppelklick-Start, Startpruefung, alles merken, „stopp“/„wiederhole“ – wartet auf Test am Reachy
+- [x] Nachbesserung lange Auftraege (Schnitt nach 20 s / Denkpausen / mitwandernde Schwelle) – wartet auf Test am Reachy
 - [ ] Danach: Branch nach `main` (nur mit Zustimmung)
+
+### Plan Nachbesserung „lange Auftraege“ (freigegeben 2026-10-08, Variante „Nachlauf 2 s“; umgesetzt)
+Fehlerbild (Nutzer): Bei laengeren gesprochenen Prompts bricht die Aufnahme ab und ggf. geht nur der
+halbe Prompt an Claude. Ursachen (mit synthetischer Sprache nachgestellt):
+1. harte Grenze `max_speech_s = 20` → 25 s Sprache wird zu [20 s, 6 s]; der Rest ohne „Claude“ wird ignoriert
+2. `end_silence_s = 0.8` → jede Denkpause > 0,8 s beendet den Satz
+3. Grundrauschen wird auch *waehrend* des Sprechens nachgefuehrt → Schwelle steigt, leise Woerter
+   gelten als Stille → Schnitt mitten im fluessigen Sprechen (z. B. nach 10,9 von 15 s)
+Massnahmen:
+- A: Grundrauschen waehrend eines Satzes einfrieren; im Satz Hysterese (weiter = 3 dB ueber Rauschen,
+  Start bleibt 6 dB) → leise Woerter halten den Satz offen
+- B: Hoechstlaenge 20 s → 120 s (Whisper verarbeitet lange Aufnahmen in Abschnitten)
+- C: Satzende nach 1,2 s Pause (statt 0,8 s)
+- D: „Nachlauf“ nur fuer Auftraege: nach einem „Claude, …“-Satz noch 2 s warten; sprichst du weiter,
+  wird der naechste Satz angehaengt (beliebig oft). Terminal zeigt „(hoere weiter zu …)“.
+  Folge: ca. 3 s nach deinem letzten Wort geht der Auftrag los (bisher ca. 1 s).
+- Tests: die drei Faelle oben als Regressionstests (vorher rot, nachher gruen), echte Testaufnahme
+  muss weiterhin 4 Saetze liefern; Nachlauf-Test mit Simulation.
 
 ### Plan Schritt 6 (freigegeben 2026-10-08: alle vier Teile)
 Ziel: Starten ohne Tippen von Parametern, verstaendliche Fehler vorab, sauberer Abschluss.
@@ -41,6 +60,20 @@ Ziel: Starten ohne Tippen von Parametern, verstaendliche Fehler vorab, sauberer 
 - Nutzer bemerkte mehr Ethernet-Last bei laufender App. Ursache: `GstWebRTCClient` empfängt fest
   Kamera-Video (H.264) + Audio; kein „nur Audio“-Modus im SDK. Optionen: so lassen / Video-Transceiver
   per SDK-Interna inaktiv setzen / Feature-Wunsch bei Pollen. **Entscheidung: so lassen.**
+
+### Erkenntnisse lange Auftraege (2026-10-08)
+- Satzerkennung: Schwelle im Satz eingefroren (Rauschen beim Satzbeginn + 4 dB statt aktuell + 6 dB),
+  Schaetzung laeuft weiter. Satzende 1,2 s, Hoechstlaenge 120 s, 0,5 s Einmessen nach dem Start
+  (ohne: Schaetzung aus 6 Messwerten → ganze Testaufnahme als ein Satz).
+- Risiko des Einfrierens: anspringender Luefter = endloser „Satz“. Loesung: gleichmaessig lautes
+  Fenster (10 %..90 % < 3 dB, und selbst die leisen Anteile ueber der Satzschwelle) beendet den Satz.
+  Erst 6 dB gewaehlt → hat lauten synthetischen Sprecher (Ton mit nur 3,7 dB Schwankung) verworfen.
+  Daher 3 dB und solche Abschnitte **nicht verwerfen**, sondern an Whisper geben (filtert selbst).
+- Nachlauf in **Audiozeit** gezaehlt (2 s Mikrofon ohne neue Sprache) – im Echtbetrieb gleich, im Test
+  deterministisch. Steuerwoerter (`immediate`) ohne Nachlauf. Wiederholtes „Claude,“ wird beim Anhaengen entfernt.
+- Gegenproben: alle vier alten Verhaltensweisen (20 s, 0,8 s, mitwandernde Schwelle, keine
+  Dauergeraeusch-Erkennung) lassen je mindestens einen Regressionstest rot werden.
+- Synthetische Sprache fuer Tests braucht echte Silben-Modulation, sonst sieht sie wie ein Luefter aus.
 
 ### Erkenntnisse Schritt 6 (2026-10-08)
 - Reachys Daemon liefert seine Version: `GET http://<reachy>:8000/api/daemon/status` → `"version": "1.11.0"`

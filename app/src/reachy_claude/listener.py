@@ -18,7 +18,7 @@ import time
 from collections.abc import Callable
 from typing import Protocol
 
-from .audio import Audio, to_mono
+from .audio import SAMPLE_RATE, Audio, to_mono
 from .robot import RobotMedia, play
 from .segmenter import SpeechSegmenter
 from .stt import Transcriber
@@ -26,6 +26,9 @@ from .tts import Speaker
 from .wakeword import Wake, clean_text, parse_wake
 
 WAKE_FOLLOW_UP_S = 8.0  # nach "Claude." so lange auf den Auftrag warten
+# Nachlauf: nach "Claude, ..." so lange auf weitere Saetze warten, die zum Auftrag gehoeren
+# (lange Auftraege mit Denkpausen). Steuerwoerter ("stopp") gehen sofort raus.
+FOLLOW_ON_S = 2.0
 DEAF_AFTER_RESPONSE_S = (
     1.5  # Reachy spielt verzoegert ab (Netz + Puffer) – Rest der eigenen Ansage ignorieren
 )
@@ -158,11 +161,15 @@ def listen(
     clock: Callable[[], float] | None = None,
     on_event: EventHandler | None = None,
     muted: Callable[[], bool] | None = None,
+    follow_on_s: float = FOLLOW_ON_S,
+    immediate: Callable[[str], bool] | None = None,
 ) -> None:
     """Zuhoeren, bis ``stop`` gesetzt wird.
 
     ``on_event`` meldet Sprechbeginn/-ende (fuer Bewegungen); solange ``muted()`` wahr ist
-    (Reachy spricht), wird nicht zugehoert.
+    (Reachy spricht), wird nicht zugehoert. Ein Auftrag geht erst ``follow_on_s`` nach dem
+    letzten Satz an ``on_command``; was du bis dahin weitersprichst, wird angehaengt.
+    Auftraege, fuer die ``immediate(auftrag)`` wahr ist, gehen sofort raus.
     """
     clock = clock or time.monotonic
     segmenter = segmenter or SpeechSegmenter()
@@ -175,8 +182,23 @@ def listen(
         target=read_microphone, args=(media, chunks, stop), name="mikrofon", daemon=True
     )
     reader.start()
+    pending: str | None = None  # verstandener Auftrag, der noch auf Fortsetzung wartet
+    quiet_s = 0.0  # Audio ohne neue Sprache seit dem letzten Satz des wartenden Auftrags (Audiozeit)
+
+    def dispatch(command: str) -> None:
+        nonlocal was_speaking, deaf_until
+        on_command(command)  # darf Reachy sprechen lassen (blockiert)
+        # Alles verwerfen, was Reachy waehrenddessen von sich selbst gehoert hat.
+        _drain(chunks)
+        segmenter.reset()
+        was_speaking = False
+        deaf_until = clock() + DEAF_AFTER_RESPONSE_S
+
     try:
         while not stop.is_set() or not chunks.empty():
+            if pending is not None and quiet_s >= follow_on_s:
+                ready, pending = pending, None
+                dispatch(ready)
             try:
                 chunk = chunks.get(timeout=0.1)
             except queue.Empty:
@@ -191,20 +213,43 @@ def listen(
             if was_speaking and not segmenter.in_speech:
                 emit("speech_end")
             was_speaking = segmenter.in_speech
+            if pending is not None:
+                quiet_s = 0.0 if segmenter.in_speech else quiet_s + chunk.size / SAMPLE_RATE
             for utterance in utterances:
-                command = parser.handle(transcriber.transcribe(utterance))
+                text = transcriber.transcribe(utterance)
+                if pending is not None:
+                    pending = _append(pending, text, output)
+                    quiet_s = 0.0
+                    continue
+                command = parser.handle(text)
                 if command is None:
                     continue
-                on_command(command)  # darf Reachy sprechen lassen (blockiert)
-                # Alles verwerfen, was Reachy waehrenddessen von sich selbst gehoert hat.
-                _drain(chunks)
-                segmenter.reset()
-                was_speaking = False
-                deaf_until = clock() + DEAF_AFTER_RESPONSE_S
-                break
+                if follow_on_s <= 0 or (immediate is not None and immediate(command)):
+                    dispatch(command)
+                    break
+                pending, quiet_s = command, 0.0
+                output("        (hoere weiter zu – sprich ruhig weiter, sonst geht es gleich los)")
+        if pending is not None:  # beim regulaeren Ende nichts Verstandenes verlieren
+            dispatch(pending)
     finally:
         stop.set()
         reader.join(timeout=2.0)
+
+
+def _append(command: str, text: str, output: Output) -> str:
+    """Fortsetzung an den wartenden Auftrag haengen (ein wiederholtes "Claude," wird entfernt)."""
+    text = clean_text(text)
+    if not text:
+        return command
+    result = parse_wake(text)
+    if result.kind is Wake.COMMAND:
+        text = result.command
+    elif result.kind is Wake.WAKE_ONLY:
+        return command
+    output(f"Du:     {text}")
+    combined = f"{command} {text}"
+    output(f"  -> Auftrag (ergaenzt): {combined}")
+    return combined
 
 
 def _drain(chunks: queue.Queue[Audio]) -> None:

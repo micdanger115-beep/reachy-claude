@@ -265,7 +265,7 @@ def prepare_claude(
 
 
 def run_listen(args: argparse.Namespace, reachy: ReachySettings) -> int:
-    from .assistant import ClaudeAssistant, PrintOnly
+    from .assistant import ClaudeAssistant, PrintOnly, control_word
     from .claude import ClaudeRunner
     from .doctor import has_errors, report, run_checks
     from .listener import CommandParser, SpeechGate, Voice, listen
@@ -358,6 +358,8 @@ def run_listen(args: argparse.Namespace, reachy: ReachySettings) -> int:
                 parser=parser,
                 on_event=on_event,
                 muted=voice.muted,
+                # "stopp"/"wiederhole" sofort, ohne auf eine Fortsetzung des Auftrags zu warten
+                immediate=lambda command: control_word(command) is not None,
             )
         except KeyboardInterrupt:
             stop.set()
