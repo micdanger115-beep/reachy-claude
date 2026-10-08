@@ -4,8 +4,10 @@ Ein eigener Thread liest ununterbrochen Reachys Mikrofon (damit beim Erkennen ni
 verloren geht); der Hauptthread schneidet Saetze heraus, erkennt sie und entscheidet,
 ob ein Auftrag fuer Claude dabei ist.
 
-Waehrend Reachy selbst spricht (im ``on_command``-Handler) und kurz danach wird alles
-verworfen, was das Mikrofon aufnimmt – sonst hoert Reachy sich selbst zu.
+Waehrend Reachy selbst spricht und kurz danach wird alles verworfen, was das Mikrofon
+aufnimmt – sonst hoert Reachy sich selbst zu ("Claude arbeitet noch." beginnt mit "Claude"!).
+Das gilt fuer Ansagen im ``on_command``-Handler und – ueber ``SpeechGate`` – auch fuer
+Ansagen aus dem Hintergrund, waehrend Claude arbeitet.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ import queue
 import threading
 import time
 from collections.abc import Callable
+from typing import Protocol
 
 from .audio import Audio, to_mono
 from .robot import RobotMedia, play
@@ -30,6 +33,42 @@ DEAF_AFTER_RESPONSE_S = (
 Output = Callable[[str], None]
 CommandHandler = Callable[[str], None]
 EventHandler = Callable[[str], None]  # "speech_start", "speech_end", "wake"
+
+
+class _Says(Protocol):
+    def say(self, text: str) -> None: ...
+
+
+class SpeechGate:
+    """Sorgt dafuer, dass immer nur ein Satz gleichzeitig gesprochen wird, und meldet dem
+    Zuhoeren, wann es weghoeren muss (waehrend Reachy spricht und kurz danach)."""
+
+    def __init__(
+        self,
+        voice: _Says,
+        *,
+        clock: Callable[[], float] | None = None,
+        after_s: float = DEAF_AFTER_RESPONSE_S,
+    ) -> None:
+        self._voice = voice
+        self._clock = clock or time.monotonic
+        self._after_s = after_s
+        self._lock = threading.Lock()
+        self._speaking = False
+        self._quiet_until = 0.0
+
+    def say(self, text: str) -> None:
+        with self._lock:
+            self._speaking = True
+            try:
+                self._voice.say(text)
+            finally:
+                self._quiet_until = self._clock() + self._after_s
+                self._speaking = False
+
+    def muted(self) -> bool:
+        """Soll das Zuhoeren gerade weghoeren?"""
+        return self._speaking or self._clock() < self._quiet_until
 
 
 class Voice:
@@ -118,8 +157,13 @@ def listen(
     parser: CommandParser | None = None,
     clock: Callable[[], float] | None = None,
     on_event: EventHandler | None = None,
+    muted: Callable[[], bool] | None = None,
 ) -> None:
-    """Zuhoeren, bis ``stop`` gesetzt wird. ``on_event`` meldet Sprechbeginn/-ende (fuer Bewegungen)."""
+    """Zuhoeren, bis ``stop`` gesetzt wird.
+
+    ``on_event`` meldet Sprechbeginn/-ende (fuer Bewegungen); solange ``muted()`` wahr ist
+    (Reachy spricht), wird nicht zugehoert.
+    """
     clock = clock or time.monotonic
     segmenter = segmenter or SpeechSegmenter()
     parser = parser or CommandParser(output)
@@ -137,7 +181,9 @@ def listen(
                 chunk = chunks.get(timeout=0.1)
             except queue.Empty:
                 continue
-            if clock() < deaf_until:
+            if clock() < deaf_until or (muted is not None and muted()):
+                segmenter.reset()  # angefangenen Satz und Vorlauf (Reachys eigene Stimme) verwerfen
+                was_speaking = False
                 continue
             utterances = list(segmenter.feed(chunk))
             if segmenter.in_speech and not was_speaking:

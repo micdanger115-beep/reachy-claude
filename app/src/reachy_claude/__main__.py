@@ -1,4 +1,4 @@
-"""Kommandozeile: ``reachy-claude check-audio | say | listen``."""
+"""Kommandozeile: ``reachy-claude listen | pruefen | check-audio | say | voices``."""
 
 from __future__ import annotations
 
@@ -7,11 +7,13 @@ import logging
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .check_audio import run_audio_check
 from .robot import DEFAULT_ROBOT, RobotConnectionError, connect, wait_for_audio
+from .settings import SETTINGS_FILE, ReachySettings, SettingsError, remember_reachy
 from .tts import DEFAULT_VOICE, Speaker
 
 if TYPE_CHECKING:
@@ -34,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="reachy-claude", description="Mit Reachy sprechen, Claude arbeitet."
     )
     parser.add_argument(
-        "--robot", default=DEFAULT_ROBOT, help=f"Name oder IP von Reachy (Standard: {DEFAULT_ROBOT})"
+        "--robot", help=f"Name oder IP von Reachy (wird gespeichert; Standard: {DEFAULT_ROBOT})"
     )
     parser.add_argument("--debug", action="store_true", help="ausfuehrliche Meldungen")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -47,9 +49,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("voices", help="Alle deutschen Stimmen anzeigen")
 
+    check = sub.add_parser("pruefen", help="Startpruefung: ist alles bereit?")
+    check.add_argument("--device", choices=["auto", "cuda", "cpu"], default="auto")
+
     say = sub.add_parser("say", help="Schritt 3: Reachy einen Text sprechen lassen")
     say.add_argument("text", help="was Reachy sagen soll")
-    say.add_argument("--voice", default=DEFAULT_VOICE, help=f"Piper-Stimme (Standard: {DEFAULT_VOICE})")
+    say.add_argument("--voice", help="Piper-Stimme zum Ausprobieren (Standard: die gespeicherte)")
     say.add_argument("--speaker", help="Sprecher bei Stimmen mit mehreren Sprechern (Name oder Nummer)")
 
     listen = sub.add_parser(
@@ -66,10 +71,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--device", choices=["auto", "cuda", "cpu"], default="auto", help="Spracherkennung auf ..."
     )
     listen.add_argument("--model", help="Whisper-Modell (Standard: large-v3-turbo auf GPU, small auf CPU)")
-    listen.add_argument("--voice", default=DEFAULT_VOICE, help=f"Piper-Stimme (Standard: {DEFAULT_VOICE})")
-    listen.add_argument("--speaker", help="Sprecher bei Stimmen mit mehreren Sprechern (Name oder Nummer)")
+    listen.add_argument("--voice", help=f"Piper-Stimme (wird gespeichert; Standard: {DEFAULT_VOICE})")
+    listen.add_argument("--speaker", help="Sprecher bei Stimmen mit mehreren Sprechern (wird gespeichert)")
     listen.add_argument("--silent", action="store_true", help="Reachy antwortet nicht mit Stimme (nur Text)")
-    listen.add_argument("--no-motion", action="store_true", help="Reachy bewegt sich nicht (nur Stimme)")
+    listen.add_argument(
+        "--motion",
+        action=argparse.BooleanOptionalAction,
+        help="Kopf und Antennen bewegen (wird gespeichert; Standard: an)",
+    )
     listen.add_argument("--stay-awake", action="store_true", help="Reachy am Ende nicht schlafen legen")
     return parser
 
@@ -87,15 +96,32 @@ def main(argv: list[str] | None = None) -> int:
         print("--seconds muss zwischen 1 und 60 liegen.")
         return 2
 
+    if args.command == "voices":
+        return run_voices()
+    try:
+        reachy = remember_reachy(
+            SETTINGS_FILE,
+            robot=args.robot,
+            # Stimme/Bewegung merken wir nur beim Zuhoeren; "say" ist zum Ausprobieren da.
+            **(
+                {"voice": args.voice, "speaker": args.speaker, "motion": args.motion}
+                if args.command == "listen"
+                else {}
+            ),
+        )
+    except SettingsError as exc:
+        print(f"FEHLER: {exc}")
+        return 2
+
     try:
         if args.command == "listen":
-            return run_listen(args)
+            return run_listen(args, reachy)
         if args.command == "say":
-            return run_say(args)
-        if args.command == "voices":
-            return run_voices()
-        print(f"Verbinde mit Reachy ({args.robot}) ...")
-        with connect(args.robot, debug=args.debug) as mini:
+            return run_say(args, reachy)
+        if args.command == "pruefen":
+            return run_doctor(args, reachy)
+        print(f"Verbinde mit Reachy ({reachy.robot}) ...")
+        with connect(reachy.robot, debug=args.debug) as mini:
             print("Verbunden.")
             result = run_audio_check(mini.media, print_line, seconds=args.seconds, save_to=args.save)
         return 0 if result.mic_ok else 1
@@ -135,14 +161,32 @@ def load_speaker(voice: str, speaker_name: str | None = None) -> Speaker | None:
     return speaker
 
 
-def run_say(args: argparse.Namespace) -> int:
+def run_doctor(args: argparse.Namespace, reachy: ReachySettings) -> int:
+    from .doctor import has_errors, report, run_checks
+
+    print(f"Startpruefung (Reachy: {reachy.robot}, Einstellungen: app\\{SETTINGS_FILE}) ...\n")
+    checks = run_checks(
+        host=reachy.robot, voice=reachy.voice, settings_file=SETTINGS_FILE, device=args.device
+    )
+    report(checks, print_line)
+    if has_errors(checks):
+        print("\nEs gibt Fehler (FEHL) – bitte zuerst beheben.")
+        return 1
+    print("\nAlles bereit. Starten mit Doppelklick auf Reachy-Claude.cmd.")
+    return 0
+
+
+def run_say(args: argparse.Namespace, reachy: ReachySettings) -> int:
     from .listener import Voice
 
-    speaker = load_speaker(args.voice, args.speaker)
+    # eigene Stimme zum Ausprobieren; sonst die gespeicherte samt Sprecher
+    voice = args.voice or reachy.voice
+    speaker_name = args.speaker if (args.voice or args.speaker) else reachy.speaker
+    speaker = load_speaker(voice, speaker_name)
     if speaker is None:
         return 1
-    print(f"Verbinde mit Reachy ({args.robot}) ...")
-    with connect(args.robot, debug=args.debug) as mini:
+    print(f"Verbinde mit Reachy ({reachy.robot}) ...")
+    with connect(reachy.robot, debug=args.debug) as mini:
         wait_for_audio(mini.media)
         Voice(speaker, mini.media, print_line).say(args.text)
         # Reachy spielt mit Verzoegerung ab; trennt man sofort, fehlt das Satzende.
@@ -150,9 +194,59 @@ def run_say(args: argparse.Namespace) -> int:
     return 0
 
 
-def prepare_claude(args: argparse.Namespace) -> ClaudeSettings | None:
+def ask_for_project(input_fn: Callable[[str], str] = input) -> Path | None:
+    """Projektordner abfragen: Ordner-Auswahlfenster, sonst Eingabe im Terminal."""
+    print(
+        "Noch kein Projektordner fuer Claude festgelegt. Bitte waehle den Ordner, in dem Claude arbeiten soll."
+    )
+    folder = _folder_dialog()
+    if folder == "":  # im Auswahlfenster abgebrochen
+        return None
+    if folder is None:
+        try:
+            folder = input_fn("Projektordner (Pfad einfuegen, leer = abbrechen): ").strip().strip('"')
+        except EOFError:
+            folder = ""
+    return Path(folder) if folder else None
+
+
+def _folder_dialog() -> str | None:
+    """Windows-Ordnerauswahl ueber tkinter (Teil von Python).
+
+    ``None``, wenn kein Fenster moeglich ist; ``""``, wenn im Fenster abgebrochen wurde.
+    """
+    if sys.platform != "win32":
+        return None
+    try:
+        from tkinter import Tk, filedialog
+
+        root = Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        chosen = filedialog.askdirectory(title="Projektordner fuer Claude waehlen", mustexist=True)
+        root.destroy()
+    except Exception as exc:  # kein tkinter/kein Bildschirm: dann eben per Eingabe
+        logger.debug("Ordnerauswahl nicht moeglich: %s", exc)
+        return None
+    return str(chosen) if chosen else ""
+
+
+def prepare_claude(
+    args: argparse.Namespace, choose_project: Callable[[], Path | None] | None = None
+) -> ClaudeSettings | None:
     """Einstellungen fuer Claude laden (und ggf. neuen Projektordner speichern)."""
-    from .settings import SETTINGS_FILE, Permission, SettingsError, load_settings, save_settings
+    from .settings import MissingProjectError, Permission, load_settings, save_settings
+
+    if args.project is None and choose_project is not None:
+        try:
+            load_settings(SETTINGS_FILE)
+        except MissingProjectError:
+            args.project = choose_project()
+            if args.project is None:
+                print("Abgebrochen – ohne Projektordner kann Claude nicht arbeiten.")
+                return None
+        except SettingsError:
+            pass  # wird unten mit Meldung behandelt
 
     try:
         if args.project is not None:
@@ -170,14 +264,30 @@ def prepare_claude(args: argparse.Namespace) -> ClaudeSettings | None:
     return settings
 
 
-def run_listen(args: argparse.Namespace) -> int:
+def run_listen(args: argparse.Namespace, reachy: ReachySettings) -> int:
     from .assistant import ClaudeAssistant, PrintOnly
     from .claude import ClaudeRunner
-    from .listener import CommandParser, Voice, listen
+    from .doctor import has_errors, report, run_checks
+    from .listener import CommandParser, SpeechGate, Voice, listen
     from .motion import Mood, MovingVoice
     from .stt import SttConfig, WhisperTranscriber
 
-    settings = None if args.no_claude else prepare_claude(args)
+    print(f"Startpruefung (Reachy: {reachy.robot}) ...")
+    checks = run_checks(
+        host=reachy.robot,
+        voice=reachy.voice,
+        settings_file=SETTINGS_FILE,
+        with_claude=not args.no_claude,
+        with_project=False,  # fragt prepare_claude selbst ab
+        with_gpu=False,  # meldet die Spracherkennung beim Laden selbst
+    )
+    report(checks, print_line, problems_only=True)
+    if has_errors(checks):
+        print("Start abgebrochen – bitte zuerst beheben (Gesamtuebersicht: reachy-claude.ps1 pruefen).")
+        return 1
+
+    interactive = sys.stdin is not None and sys.stdin.isatty()
+    settings = None if args.no_claude else prepare_claude(args, ask_for_project if interactive else None)
     if settings is None and not args.no_claude:
         return 1
 
@@ -192,20 +302,25 @@ def run_listen(args: argparse.Namespace) -> int:
 
     speaker = None
     if not args.silent:
-        speaker = load_speaker(args.voice, args.speaker)
+        speaker = load_speaker(reachy.voice, reachy.speaker)
         if speaker is None:
             return 1
 
-    print(f"Verbinde mit Reachy ({args.robot}) ...")
-    with connect(args.robot, debug=args.debug) as mini:
+    print(f"Verbinde mit Reachy ({reachy.robot}) ...")
+    with connect(reachy.robot, debug=args.debug) as mini:
         wait_for_audio(mini.media)
-        animator = None if args.no_motion else start_motion(mini)
-        print('Verbunden. Sprich mit Reachy – Auftraege beginnen mit "Claude, ...". Beenden mit Strg+C.\n')
+        animator = start_motion(mini) if reachy.motion else None
+        print('Verbunden. Sprich mit Reachy – Auftraege beginnen mit "Claude, ...". Beenden mit Strg+C.')
+        print(
+            'Waehrend Claude arbeitet: "Claude, stopp" bricht ab, "Claude, wiederhole" liest nochmal vor.\n'
+        )
         base_voice: Speaks = (
             Voice(speaker, mini.media, print_line) if speaker is not None else PrintOnly(print_line)
         )
-        voice: Speaks = MovingVoice(base_voice, animator) if animator is not None else base_voice
+        # Ein Satz gleichzeitig; waehrenddessen hoert Reachy weg (sonst hoert er sich selbst).
+        voice = SpeechGate(MovingVoice(base_voice, animator) if animator is not None else base_voice)
 
+        assistant: ClaudeAssistant | None = None
         if settings is None:
 
             def on_command(command: str) -> None:
@@ -219,7 +334,7 @@ def run_listen(args: argparse.Namespace) -> int:
                 spoken_max_chars=settings.spoken_max_chars,
                 mood=animator,
             )
-            on_command = assistant.handle
+            on_command = assistant.submit  # Claude arbeitet im Hintergrund, Reachy hoert weiter zu
 
         def on_event(event: str) -> None:
             if animator is None:
@@ -227,7 +342,8 @@ def run_listen(args: argparse.Namespace) -> int:
             if event == "speech_start":
                 animator.set_mood(Mood.LISTENING)
             elif event == "speech_end" and animator.mood is Mood.LISTENING:
-                animator.set_mood(Mood.IDLE)
+                busy = assistant is not None and assistant.busy
+                animator.set_mood(Mood.THINKING if busy else Mood.IDLE)
 
         parser = CommandParser(print_line, on_wake=animator.acknowledge if animator is not None else None)
         voice.say(GREETING)
@@ -241,11 +357,14 @@ def run_listen(args: argparse.Namespace) -> int:
                 stop=stop,
                 parser=parser,
                 on_event=on_event,
+                muted=voice.muted,
             )
         except KeyboardInterrupt:
             stop.set()
             print("Beendet.")
         finally:
+            if assistant is not None:
+                assistant.shutdown()
             if animator is not None:
                 animator.stop()
                 if not args.stay_awake:

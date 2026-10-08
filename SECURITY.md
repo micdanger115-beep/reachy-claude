@@ -15,6 +15,9 @@ Bei jeder Änderung mitpflegen. (v1-Bedrohungsmodell: [`legacy/SECURITY.md`](leg
 | S2 | Sprache verlässt das Haus | Spracherkennung (Whisper) und -ausgabe lokal auf dem PC; Audio nur im Heimnetz (WebRTC, Signalisierung auf dem Roboter); Modelle nur einmalig heruntergeladen | ✅ |
 | S3 | Versehentliche Aufträge (Fernseher, Gäste, Fehlerkennung) | Nur Sätze mit Aktivierungswort „Claude“ (am Satzanfang) gehen weiter; „Claude“ allein öffnet nur 8 s lang; ein Auftrag gleichzeitig; Claude ist angewiesen, bei Unklarheit nachzufragen | ✅ |
 | S4 | Claude richtet Schaden an | Wie v1: `--permission-mode dontAsk`, nur Lesen/Bearbeiten im Projektordner (`-Rechte read` möglich), **keine Shell, kein Internet, keine MCP-Server**, **Einstellungen und Hooks aus dem Projektordner werden ignoriert** (`--setting-sources user`; sonst könnte ein fremdes, manipuliertes Repo über `.claude/settings.json` Befehle ausführen), `.claude/`, `.git/` und `.vscode/` sind nie bearbeitbar, Timeout beendet den Prozessbaum, Prompt nur über stdin (keine Argument-Injection, auch nicht über `claude.cmd`), ganzes Laufwerk als Projektordner verboten | ✅ |
+| S12 | Gemerkte Einstellungen (`app/einstellungen.toml`) mit unsinnigen/gefährlichen Werten | Roboter-Adresse nur Hostname/IP (keine URL-Teile), Stimmenname streng geprüft (kein `..`/`/`, landet in Dateipfaden), Fehler werden vor dem Speichern erkannt – die Datei bleibt dann unverändert | ✅ |
+| S13 | Claude macht etwas Ungewolltes und läuft lange | „Claude, stopp“ beendet den laufenden Auftrag sofort (ganzer Prozessbaum); Reachy sagt ehrlich, dass schon ein Teil erledigt sein kann. Beim Beenden der App wird ein laufender Auftrag ebenfalls abgebrochen | ✅ |
+| S14 | Veraltete Reachy-Software unbemerkt | Startprüfung fragt Reachys Version im Heimnetz ab und warnt bei bekannten Lücken (S10) | ✅ |
 | S5 | Manipulierte Texte im Terminal (Steuerzeichen) | Erkannte Texte werden vor Anzeige/Weitergabe bereinigt | ✅ |
 | S6 | Supply-Chain | wenige, verbreitete Abhängigkeiten; Reachy-SDK auf `~=1.11.0` begrenzt | ✅ |
 | S7 | Aufnahmen/Mitschriften auf der Festplatte | Audio-Test-WAV in `app/aufnahmen/`, Claude-Mitschriften in `app/mitschriften/` – nur lokal, nicht in Git | ✅ |
@@ -30,7 +33,8 @@ Bei jeder Änderung mitpflegen. (v1-Bedrohungsmodell: [`legacy/SECURITY.md`](leg
   Empfehlung: Gäste-WLAN für fremde Geräte.
 - Der WebRTC-Ton zwischen Reachy und PC ist verschlüsselt (WebRTC/DTLS); die
   Signalisierung (`ws://`, Port 8443) nicht.
-- Keine Sprechererkennung: Jeder im Raum kann „Claude, …“ sagen.
+- Keine Sprechererkennung: Jeder im Raum kann „Claude, …“ sagen – und auch „Claude, stopp“.
+- Während Reachy spricht, hört er nicht zu (sonst Selbstgespräch): „stopp“ in einer Sprechpause sagen.
 - **Kamerabild:** Die WebRTC-Verbindung des SDK überträgt fest auch Reachys Kamerabild an den PC
   (mehr Netzlast im Heimnetz). Es wird weder gespeichert noch ausgewertet. Ein „nur Audio“-Modus
   existiert im SDK (1.11 und main) nicht; Entscheidung des Nutzers (2026-10-08): **so lassen**.

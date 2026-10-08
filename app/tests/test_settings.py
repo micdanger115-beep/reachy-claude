@@ -3,7 +3,15 @@ from pathlib import Path
 import pytest
 from conftest import FAKE_CLAUDE
 
-from reachy_claude.settings import Permission, SettingsError, load_settings, save_settings
+from reachy_claude.settings import (
+    Permission,
+    ReachySettings,
+    SettingsError,
+    load_reachy_settings,
+    load_settings,
+    remember_reachy,
+    save_settings,
+)
 
 
 def write(path: Path, body: str) -> Path:
@@ -82,3 +90,58 @@ def test_toml_string_escaping_roundtrip(value: str) -> None:
     from reachy_claude.settings import _toml_string
 
     assert tomllib.loads(f"x = {_toml_string(value)}")["x"] == value
+
+
+def test_reachy_defaults_without_file(tmp_path: Path) -> None:
+    assert load_reachy_settings(tmp_path / "fehlt.toml") == ReachySettings()
+
+
+def test_remember_reachy_keeps_claude_section_and_vice_versa(tmp_path: Path) -> None:
+    file = tmp_path / "e.toml"
+    save_settings(file, tmp_path, Permission.READ)
+    remember_reachy(file, robot="192.168.1.30", voice="de_DE-mls-medium", speaker="7", motion=False)
+    save_settings(file, tmp_path, Permission.EDIT)  # darf [reachy] nicht verlieren
+    text = file.read_text(encoding="utf-8")
+    assert 'projektordner = "' in text and 'roboter = "192.168.1.30"' in text
+    assert load_reachy_settings(file) == ReachySettings("192.168.1.30", "de_DE-mls-medium", "7", False)
+
+
+def test_new_voice_drops_old_speaker(tmp_path: Path) -> None:
+    file = tmp_path / "e.toml"
+    remember_reachy(file, voice="de_DE-mls-medium", speaker="7")
+    assert remember_reachy(file, voice="de_DE-kerstin-low").speaker is None
+    assert remember_reachy(file, speaker="2").speaker == "2"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"robot": "http://evil/"}, "Adresse"),
+        ({"robot": ""}, "Adresse"),
+        ({"robot": "a b"}, "Adresse"),
+        ({"voice": "../../etc/passwd"}, "Stimmenname"),
+    ],
+)
+def test_invalid_reachy_values_are_rejected_and_file_unchanged(
+    tmp_path: Path, kwargs: dict[str, str], message: str
+) -> None:
+    file = tmp_path / "e.toml"
+    remember_reachy(file, robot="reachy.fritz.box")
+    before = file.read_text(encoding="utf-8")
+    with pytest.raises(SettingsError, match=message):
+        remember_reachy(file, **kwargs)  # type: ignore[arg-type]
+    assert file.read_text(encoding="utf-8") == before
+
+
+@pytest.mark.parametrize("host", ["reachy-mini.local", "192.168.1.30", "fe80::1", "REACHY"])
+def test_valid_robot_addresses(tmp_path: Path, host: str) -> None:
+    assert remember_reachy(tmp_path / "e.toml", robot=host).robot == host
+
+
+def test_hand_edited_reachy_values_are_checked(tmp_path: Path) -> None:
+    file = tmp_path / "e.toml"
+    file.write_text('[reachy]\nbewegung = "ja"\n', encoding="utf-8")
+    with pytest.raises(SettingsError, match="true oder false"):
+        load_reachy_settings(file)
+    file.write_text("[reachy]\nsprecher = 3\nbewegung = false\n", encoding="utf-8")
+    assert load_reachy_settings(file).speaker == "3"

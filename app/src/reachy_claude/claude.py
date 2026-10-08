@@ -11,7 +11,7 @@ Sicherheitsprinzipien:
   und Hooks aus dem Projektordner (``.claude/settings.json``) koennten sonst an allen
   Werkzeug-Sperren vorbei Befehle ausfuehren (z. B. in einem fremden, manipulierten Repo).
 - Steuer-Ordner (``.claude``, ``.git`` mit seinen Hooks, ``.vscode``) duerfen nie bearbeitet werden.
-- Timeout beendet den ganzen Prozessbaum.
+- Timeout und Abbruch ("Claude, stopp") beenden den ganzen Prozessbaum.
 """
 
 from __future__ import annotations
@@ -57,6 +57,13 @@ class ClaudeError(RuntimeError):
     """Claude konnte den Auftrag nicht ausfuehren (Text ist vorlesbar)."""
 
 
+class ClaudeCancelled(ClaudeError):
+    """Der Auftrag wurde auf Wunsch abgebrochen."""
+
+
+CANCELLED_MESSAGE = "Abgebrochen. Claude hat eventuell schon einen Teil erledigt."
+
+
 class ClaudeExitError(ClaudeError):
     """Die CLI ist ohne Ergebnis beendet worden (z. B. unbekannte Sitzung beim Fortsetzen)."""
 
@@ -82,6 +89,10 @@ class AskService(Protocol):
     """Schnittstelle zu Claude (im Test ersetzbar)."""
 
     def ask(self, prompt: str, new_conversation: bool = False) -> ClaudeResult: ...
+
+    def cancel(self) -> bool:
+        """Laufenden Auftrag abbrechen; ``True``, wenn einer lief."""
+        ...
 
 
 def build_argv(config: ClaudeSettings, session_id: str | None) -> list[str]:
@@ -158,7 +169,10 @@ class ClaudeRunner:
     def __init__(self, config: ClaudeSettings) -> None:
         self._config = config
         self._session_id: str | None = None
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()  # ein Auftrag gleichzeitig
+        self._proc_lock = threading.Lock()  # schuetzt _proc/_cancelled (auch waehrend ask laeuft)
+        self._proc: subprocess.Popen[str] | None = None
+        self._cancelled = False
 
     @property
     def session_id(self) -> str | None:
@@ -167,6 +181,17 @@ class ClaudeRunner:
     def reset(self) -> None:
         with self._lock:
             self._session_id = None
+
+    def cancel(self) -> bool:
+        """Laufenden Auftrag abbrechen (beendet den Prozessbaum); ``True``, wenn einer lief."""
+        with self._proc_lock:
+            proc = self._proc
+            if proc is None or proc.poll() is not None:
+                return False
+            self._cancelled = True
+        logger.info("Auftrag wird abgebrochen (PID %s).", proc.pid)
+        _kill_tree(proc)
+        return True
 
     def ask(self, prompt: str, new_conversation: bool = False) -> ClaudeResult:
         with self._lock:
@@ -193,17 +218,20 @@ class ClaudeRunner:
         else:
             popen_kwargs["start_new_session"] = True
         started = time.monotonic()
-        proc = subprocess.Popen(
-            argv,
-            cwd=self._config.workdir,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            **popen_kwargs,
-        )
+        with self._proc_lock:
+            self._cancelled = False
+            proc = subprocess.Popen(
+                argv,
+                cwd=self._config.workdir,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                **popen_kwargs,
+            )
+            self._proc = proc
         try:
             stdout, stderr = proc.communicate(prompt, timeout=self._config.timeout_s)
         except subprocess.TimeoutExpired as exc:
@@ -213,6 +241,16 @@ class ClaudeRunner:
             raise ClaudeError(
                 f"Claude hat nach {minutes} Minuten nicht geantwortet, ich habe abgebrochen."
             ) from exc
+        except (BrokenPipeError, OSError):
+            # Prozess wurde beendet, bevor der Auftrag ganz uebergeben war (Abbruch)
+            stdout, stderr = "", ""
+            proc.wait()
+        finally:
+            with self._proc_lock:
+                self._proc = None
+                cancelled = self._cancelled
+        if cancelled:
+            raise ClaudeCancelled(CANCELLED_MESSAGE)
         duration = time.monotonic() - started
         if proc.returncode != 0 and not stdout.strip():
             logger.error("claude beendet mit Code %s: %s", proc.returncode, stderr.strip()[-2000:])

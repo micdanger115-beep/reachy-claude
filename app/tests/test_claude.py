@@ -148,3 +148,36 @@ def test_max_turns_abort_is_reported_not_retried(
     assert result.is_error
     assert "maximale Anzahl" in result.text
     assert result.session_id == "abc-123-def"
+
+
+def test_cancel_kills_running_claude(make_config: ConfigFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+    import time
+
+    from reachy_claude.claude import CANCELLED_MESSAGE, ClaudeCancelled
+
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "sleep")
+    runner = ClaudeRunner(make_config(timeout_s=60))
+    assert runner.cancel() is False  # nichts laeuft
+    outcome: list[BaseException] = []
+
+    def work() -> None:
+        try:
+            runner.ask("lange Aufgabe")
+        except BaseException as exc:
+            outcome.append(exc)
+
+    worker = threading.Thread(target=work)
+    started = time.monotonic()
+    worker.start()
+    deadline = time.monotonic() + 10
+    while not runner.cancel():
+        assert time.monotonic() < deadline, "Claude-Prozess startete nicht"
+        time.sleep(0.05)
+    worker.join(timeout=10)
+    assert not worker.is_alive()
+    assert time.monotonic() - started < 15  # nicht die 30 s des Fakes abgewartet
+    assert len(outcome) == 1 and isinstance(outcome[0], ClaudeCancelled)
+    assert str(outcome[0]) == CANCELLED_MESSAGE
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "ok")
+    assert "SPRECHTEXT" in runner.ask("danach geht es normal weiter").text

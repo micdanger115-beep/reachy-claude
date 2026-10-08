@@ -15,7 +15,7 @@ Antwort vor.
 
 ---
 
-## Stand: Schritt 5 von 6
+## Stand: alle 6 Schritte umgesetzt
 
 Die App wird schrittweise gebaut; jeden Schritt kannst du selbst am echten Reachy testen.
 
@@ -25,10 +25,77 @@ Die App wird schrittweise gebaut; jeden Schritt kannst du selbst am echten Reach
 | 2 | **Spracherkennung + Aktivierungswort „Claude“**, Ausgabe als Text | ✅ am Reachy getestet (GPU) |
 | 3 | **Sprachausgabe auf Reachy** (deutsche Stimme) | ✅ am Reachy getestet |
 | 4 | **Claude anbinden** – Reachy liest Claudes Antwort vor | ✅ am Reachy getestet |
-| 5 | **Lebendige Bewegungen** (aufwachen, zuhören, nachdenken, sprechen, schlafen) | ✅ fertig – bitte testen |
-| 6 | Ein Startskript für alles, Feinschliff | geplant |
+| 5 | **Lebendige Bewegungen** (aufwachen, zuhören, nachdenken, sprechen, schlafen) | ✅ am Reachy getestet |
+| 6 | **Start per Doppelklick**, Startprüfung, alles merken, „stopp“/„wiederhole“ | ✅ fertig – bitte testen |
 
 ---
+
+## Schnellstart (Schritt 6)
+
+1. **Voraussetzungen** (einmalig): Python ≥ 3.11 von python.org, [Claude Code](https://claude.com/claude-code)
+   installiert und einmal `claude` im Terminal gestartet (anmelden). Reachy eingeschaltet, im selben Netz.
+2. **Doppelklick auf `Reachy-Claude.cmd`.** Beim ersten Start richtet die App ihre Python-Umgebung
+   ein und lädt Spracherkennung und Stimme (einmalig, ca. 1,5 GB). Ist noch kein Projektordner
+   festgelegt, öffnet sich ein **Ordner-Auswahlfenster**.
+3. **Sprechen:** „Claude, erklär mir die Datei main.py.“ – Reachy liest die Antwort vor.
+4. **Beenden:** Strg+C (Reachy legt sich schlafen).
+
+Optional: `.\Reachy-Claude.cmd verknuepfung` legt eine **Desktop-Verknüpfung** „Reachy Claude“ an.
+
+### Vor dem Start: Startprüfung
+
+Vor jedem Zuhören prüft die App kurz, ob alles bereit ist, und bricht mit einer konkreten
+Anleitung ab, wenn etwas fehlt. Die vollständige Übersicht zeigt:
+
+```powershell
+.\Reachy-Claude.cmd pruefen
+```
+
+```
+[ OK ] Python-Pakete: vollstaendig
+[ OK ] Grafikkarte: NVIDIA-Grafikkarte wird fuer die Spracherkennung genutzt
+[ OK ] Stimme: de_DE-thorsten-medium ist installiert
+[ OK ] Claude Code: installiert und angemeldet
+[ OK ] Projektordner: D:\code\mein-projekt (lesen + bearbeiten)
+[ OK ] Reachy erreichbar: reachy-mini.local (Steuerung)
+[ OK ] Reachy Ton/Video: bereit
+[ OK ] Reachy-Version: 1.11.0
+[INFO] Reachy-Sicherheit: Bluetooth-PIN-Umgehung (GHSA-993g-hgjh-whmf); behoben ab 1.12.0
+       -> Update, sobald 1.12 erscheint; bis dahin Bluetooth nur bei Bedarf koppeln.
+```
+
+Geprüft wird auch Reachys Software-Version gegen die bekannten Sicherheitslücken
+(siehe [`SECURITY.md`](SECURITY.md), S10). Alles bleibt im Heimnetz bzw. auf dem PC.
+
+### Alles wird gemerkt
+
+Was du einmal per Parameter setzt, gilt beim nächsten Start (Doppelklick) weiter –
+gespeichert in `app\einstellungen.toml` (darf auch von Hand bearbeitet werden):
+
+| Parameter | Wirkung | gespeichert |
+|---|---|---|
+| `-Projekt "D:\code\x"` | Ordner, in dem Claude arbeitet | ✅ |
+| `-Rechte read` / `edit` | nur lesen / auch Dateien bearbeiten (Standard) | ✅ |
+| `-Robot 192.168.1.30` | Adresse von Reachy (Standard `reachy-mini.local`) | ✅ |
+| `-Stimme …` / `-Sprecher …` | Stimme (Liste: `voices`) | ✅ |
+| `-Bewegung aus` / `an` | Kopf und Antennen bewegen | ✅ |
+| `-WachBleiben`, `-Silent`, `-OhneClaude`, `-Device cpu`, `-Details` | nur für diesen Start | – |
+
+Beispiel: `.\Reachy-Claude.cmd listen -Projekt "D:\code\anderes-projekt" -Rechte read`
+
+### Sprachbefehle
+
+| Du sagst | Reachy … |
+|---|---|
+| „Claude, *Auftrag*“ | gibt den Auftrag an Claude, liest die Antwort vor |
+| „Claude.“ … *Auftrag* | zweistufig: erst „Claude“, dann innerhalb von 8 s den Auftrag |
+| „Claude, **stopp**“ / „abbrechen“ / „hör auf“ | bricht den laufenden Auftrag ab („Abgebrochen.“) |
+| „Claude, **wiederhole**“ / „nochmal“ / „wie bitte?“ | liest die letzte Antwort nochmal vor |
+| „Claude, **neues Thema**: …“ | beginnt eine neue Unterhaltung mit Claude |
+
+Während Claude arbeitet, hört Reachy weiter zu (für „stopp“). Ein zweiter Auftrag wird erst
+angenommen, wenn der erste fertig ist. Während Reachy selbst spricht, hört er nicht zu –
+„stopp“ also in einer Sprechpause sagen.
 
 ## Schritt 5: Reachy wirkt lebendig
 
@@ -49,15 +116,15 @@ Alle Bewegungen sind klein, weich übergeblendet und auf sichere Grenzen begrenz
 
 | Option | Wirkung |
 |---|---|
-| `-OhneBewegung` | Reachy bewegt sich nicht (nur Stimme) |
+| `-Bewegung aus` | Reachy bewegt sich nicht (nur Stimme; wird gemerkt, wieder an mit `-Bewegung an`) |
 | `-WachBleiben` | am Ende nicht schlafen legen |
 
 ## Stimmen
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 voices
-powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 say -Stimme de_DE-kerstin-low -Text "Hallo, ich bin Reachy."
-powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen -Stimme de_DE-kerstin-low
+.\Reachy-Claude.cmd voices
+.\Reachy-Claude.cmd say -Stimme de_DE-kerstin-low -Text "Hallo, ich bin Reachy."
+.\Reachy-Claude.cmd listen -Stimme de_DE-kerstin-low
 ```
 
 | Stimme | Beschreibung |
@@ -89,9 +156,9 @@ jede Änderung mit `git diff` und kannst sie zurücknehmen.
 ```powershell
 git pull
 # einmalig den Projektordner festlegen (wird in app\einstellungen.toml gespeichert):
-powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen -Projekt "D:\code\mein-projekt"
+.\Reachy-Claude.cmd listen -Projekt "D:\code\mein-projekt"
 # danach genügt:
-powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen
+.\Reachy-Claude.cmd listen
 ```
 
 So läuft ein Auftrag:
@@ -133,8 +200,8 @@ In `app\einstellungen.toml` lassen sich außerdem `timeout_minuten` und `claude_
 
 ```powershell
 git pull
-powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 say -Text "Hallo, ich bin Reachy."
-powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen
+.\Reachy-Claude.cmd say -Text "Hallo, ich bin Reachy."
+.\Reachy-Claude.cmd listen
 ```
 
 - Beim ersten Start wird die Sprachausgabe *Piper* installiert und die deutsche Stimme
@@ -158,7 +225,7 @@ Ansage (sollte er nicht)? Wie lange dauert es vom Satzende bis Reachy antwortet?
 
 ```powershell
 git pull
-powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen
+.\Reachy-Claude.cmd listen
 ```
 
 Beim ersten Start werden nachinstalliert bzw. heruntergeladen (einmalig, braucht Internet):
@@ -211,7 +278,7 @@ Satzende bis zur Textzeile? Werden Sätze mitten im Wort abgeschnitten?
 
 ```powershell
 git pull
-powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 check-audio
+.\Reachy-Claude.cmd check-audio
 ```
 
 Der erste Start installiert die App und das Reachy-SDK in `app\.venv` – das dauert
@@ -280,12 +347,14 @@ Verbindungsaufbau übernimmt Reachy selbst (Port 8443) – **kein Cloud-Dienst**
 
 ```
 reachy-claude/
-├── reachy-claude.ps1        Startskript (Windows)
+├── Reachy-Claude.cmd        Doppelklick-Start (ruft reachy-claude.ps1 auf)
+├── reachy-claude.ps1        Startskript (Windows): Parameter, Desktop-Verknuepfung
 ├── plan.md                  Plan, Entscheidungen, Recherche
 ├── SECURITY.md              Sicherheit
 ├── app/                     die App (Python ≥ 3.11)
 │   ├── src/reachy_claude/
-│   │   ├── __main__.py      Kommandozeile (check-audio, listen, weitere folgen)
+│   │   ├── __main__.py      Kommandozeile (listen, pruefen, check-audio, say, voices)
+│   │   ├── doctor.py        Schritt 6: Startpruefung mit „So behebst du es“ (inkl. Reachy-Version vs. Sicherheitsluecken)
 │   │   ├── robot.py         Verbindung zu Reachy (SDK), verständliche Fehlermeldungen
 │   │   ├── audio.py         Audio-Hilfen: Mono, Pegel, Töne, WAV
 │   │   ├── check_audio.py   Schritt 1: Audio-Test
@@ -293,12 +362,12 @@ reachy-claude/
 │   │   ├── stt.py           Spracherkennung (faster-whisper; GPU, sonst CPU)
 │   │   ├── wakeword.py      Aktivierungswort „Claude“ (tolerant: Cloud, Klod …)
 │   │   ├── tts.py           Sprachausgabe (Piper, deutsche Stimme, 16 kHz, Aussprache-Liste)
-│   │   ├── settings.py      Projektordner/Rechte (einstellungen.toml), strenge Prüfung
+│   │   ├── settings.py      gemerkte Einstellungen (einstellungen.toml: [claude], [reachy]), strenge Prüfung
 │   │   ├── claude.py        Claude Code CLI sicher aufrufen (aus v1): dontAsk, keine Shell/Web/MCP, Timeout
 │   │   ├── spoken.py        Vorlesetext aus Claudes Antwort (SPRECHTEXT-Zeile, aus v1)
-│   │   ├── assistant.py     Schritt 4: Auftrag → Claude (mit Zwischenmeldungen) → Terminal + Vorlesen
+│   │   ├── assistant.py     Auftrag → Claude im Hintergrund (Zwischenmeldungen, „stopp“, „wiederhole“) → Terminal + Vorlesen
 │   │   ├── motion.py        Schritt 5: Stimmungen → Kopf/Antennen (25 Hz, geglättet, begrenzt)
-│   │   └── listener.py      Mikrofon-Thread → Sätze → Text → Auftrag; Voice: Reachy spricht (ohne Selbstgespräch)
+│   │   └── listener.py      Mikrofon-Thread → Sätze → Text → Auftrag; Voice/SpeechGate: Reachy spricht (ohne Selbstgespräch)
 │   ├── tests/               pytest mit nachgebautem Reachy und simulierter Uhr
 │   │   └── data/            echte Sprach-Testaufnahme (Regressionstest)
 │   └── python-env.ps1       Python finden, .venv einrichten/reparieren
@@ -316,6 +385,8 @@ Lautsprecher und eine Uhr, damit nichts wirklich warten muss. CI
 (`.github/workflows/tests.yml`) läuft auf Ubuntu und Windows; unter Windows wird
 zusätzlich die **komplette Installation inkl. Reachy-SDK** und das Startskript unter
 Windows PowerShell 5.1 geprüft.
+
+**Verifiziert Schritt 6 (2026-10-08):** 186 Tests ✅ (u. a. Abbruch beendet den Prozessbaum, Steuerwörter vs. echte Aufträge, Einstellungen gemerkt/geprüft, keine Echos während Hintergrund-Ansagen, Startprüfung inkl. echtem HTTP-Abruf) · `pruefen` gegen den **echten Reachy-Daemon (Simulation)**: Version 1.11.0 gelesen, Sicherheitshinweise korrekt · **echte Claude CLI**: Auftrag nach 4 s per „stopp“ abgebrochen (Prozess beendet), danach Auftrag + „wiederhole“ ✅ · CI Windows: `Reachy-Claude.cmd pruefen` und Desktop-Verknüpfung.
 
 **Verifiziert Schritt 5 (2026-10-08):** 126 Tests ✅ (u. a. alle Stimmungen innerhalb der Grenzen, keine Sprünge > 3°/40 ms) · gegen den **echten Reachy-Daemon im Simulationsmodus**: Aufwachen, alle Stimmungen (Kopf folgt: Zuhören 8° schräg/3° hoch, Nachdenken 8° hoch), Antennen-Richtungen, Sprech-Wackeln, Schlafen ✅.
 

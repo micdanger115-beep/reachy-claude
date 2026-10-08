@@ -32,6 +32,8 @@ GERMAN_VOICES: dict[str, str] = {
     "de_DE-pavoque-low": "Pavoque, maennlich",
     "de_DE-mls-medium": "MLS, viele verschiedene Sprecher (Auswahl mit -Sprecher)",
 }
+# Sprache_Land-Name-Qualitaet; nichts, was als Pfad etwas anderes bedeuten koennte ("..", "/")
+VOICE_NAME_RE = re.compile(r"^[A-Za-z]{2}_[A-Za-z]{2}-[A-Za-z0-9_]+-[a-z_]+$")
 VOICES_REPO = "rhasspy/piper-voices"
 DEFAULT_VOICE_DIR = Path("voices")
 TARGET_PEAK = 0.8  # etwas Luft nach oben, damit Reachys Lautsprecher nicht uebersteuert
@@ -86,10 +88,9 @@ def apply_pronunciations(text: str, table: dict[str, str]) -> str:
 
 def voice_repo_path(voice: str) -> str:
     """Pfad im Repo ``rhasspy/piper-voices``, z. B. ``de/de_DE/thorsten/medium``."""
-    parts = voice.split("-")
-    if len(parts) != 3 or "_" not in parts[0]:
+    if not VOICE_NAME_RE.fullmatch(voice):
         raise ValueError(f"Ungueltiger Stimmenname: {voice!r} (Beispiel: {DEFAULT_VOICE})")
-    locale, name, quality = parts
+    locale, name, quality = voice.split("-")
     return f"{locale.split('_')[0]}/{locale}/{name}/{quality}"
 
 

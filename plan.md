@@ -14,15 +14,49 @@
 - [x] Schritt 3 am Reachy bestaetigt (Satz vollstaendig, Aussprache passt)
 - [x] Schritt 4: Claude anbinden (`listen -Projekt …`) – echter CLI-Durchlauf ok; wartet auf Test am Reachy
 - [x] Schritt 4 am Reachy bestaetigt
-- [x] Schritt 5: Bewegungen + Stimmenauswahl – Daemon-Simulation ok; wartet auf Test am Reachy
+- [x] Schritt 5: Bewegungen + Stimmenauswahl – **am Reachy bestaetigt** („fuers Erste okay“)
 - [x] Sicherheits-Nachbesserung (vor Schritt 6, freigegeben 2026-10-08): Projekt-Einstellungen/Hooks ignoriert,
       Steuer-Ordner gesperrt; Reachy-Luecken in SECURITY.md (S10)
-- [ ] Schritt 6: Startskript, Feinschliff
+- [x] Schritt 6: Doppelklick-Start, Startpruefung, alles merken, „stopp“/„wiederhole“ – wartet auf Test am Reachy
+- [ ] Danach: Branch nach `main` (nur mit Zustimmung)
+
+### Plan Schritt 6 (freigegeben 2026-10-08: alle vier Teile)
+Ziel: Starten ohne Tippen von Parametern, verstaendliche Fehler vorab, sauberer Abschluss.
+1. **Doppelklick-Start** `Reachy-Claude.cmd` im Hauptordner: startet `listen` ohne ExecutionPolicy-Getippe;
+   Fenster bleibt bei Fehlern offen. Befehl `verknuepfung` legt eine Desktop-Verknuepfung an.
+   Standardbefehl des Startskripts wird `listen` (statt `check-audio`).
+2. **Alles merken:** Roboter-Adresse, Stimme/Sprecher, Bewegung an/aus in `app/einstellungen.toml`
+   (wie Projektordner/Rechte heute) – einmal mit Parameter setzen, danach nie wieder noetig.
+3. **Startpruefung** `pruefen` (laeuft auch kurz vor jedem `listen`): Python-Umgebung, GPU, Claude CLI
+   installiert/angemeldet, Projektordner gesetzt, Reachy erreichbar (Ports 8000/8443), **Reachy-Version**
+   ueber `GET /api/daemon/status` → Warnung bei bekannten Luecken (S10, < 1.8.2). Jede Meldung mit
+   konkretem „So behebst du es“.
+4. **Sprachbefehle Feinschliff:** „Claude, stopp/abbrechen“ bricht einen laufenden Auftrag ab (Prozessbaum
+   beenden, Reachy sagt „Abgebrochen.“); „Claude, wiederhole“ liest die letzte Antwort nochmal vor.
+5. Tests (Startpruefung mit Fakes, Einstellungen, Sprachbefehle), README als Kurzanleitung
+   „Installation → Doppelklick → sprechen“, SECURITY/plan pflegen, CI gruen.
+6. Nach deinem Test am Reachy: Branch nach `main` uebernehmen (nur mit deiner Zustimmung).
 
 ### Entscheidung Netzlast (2026-10-08)
 - Nutzer bemerkte mehr Ethernet-Last bei laufender App. Ursache: `GstWebRTCClient` empfängt fest
   Kamera-Video (H.264) + Audio; kein „nur Audio“-Modus im SDK. Optionen: so lassen / Video-Transceiver
   per SDK-Interna inaktiv setzen / Feature-Wunsch bei Pollen. **Entscheidung: so lassen.**
+
+### Erkenntnisse Schritt 6 (2026-10-08)
+- Reachys Daemon liefert seine Version: `GET http://<reachy>:8000/api/daemon/status` → `"version": "1.11.0"`
+  (gegen echten Daemon im Simulationsmodus geprueft). Damit prueft `pruefen` die Luecken aus S10.
+- `claude auth status --json` → `{"loggedIn": true, ...}` – Anmeldung pruefbar ohne Netzanfrage an Claude.
+- „stopp“ braucht Zuhoeren waehrend Claude arbeitet → Auftraege laufen jetzt im Hintergrund
+  (`ClaudeAssistant.submit`), `SpeechGate` serialisiert Reachys Saetze und meldet „weghoeren“, damit
+  Hintergrund-Ansagen („Claude arbeitet noch.“ beginnt mit „Claude“!) nicht als Auftrag zurueckkommen.
+- Abbruch: `ClaudeRunner.cancel()` beendet den Prozessbaum (eigenes Lock, da `ask` das Auftrags-Lock haelt);
+  echte CLI: nach 4 s abgebrochen, Prozess weg, naechster Auftrag normal.
+- Steuerwoerter nur, wenn der *ganze* Auftrag eines ist („wiederhole den Test“ geht an Claude).
+- Einstellungen: `[reachy]` (roboter, stimme, sprecher, bewegung) neben `[claude]`; Werte werden vor dem
+  Schreiben geprueft; neue Stimme ohne Sprecher loescht den alten Sprecher; `say -Stimme` speichert nicht.
+- `.cmd` braucht CRLF → `.gitattributes`; `pause` nur bei Fehler (Fenster bleibt offen); im CI mit `< NUL`.
+- Desktop-Pfad ueber `GetFolderPath(Desktop, Create)` (leer, falls Ordner fehlt, ohne `Create`).
+- CLI-Tests laufen im Temp-Ordner (sonst wuerden sie die echte `einstellungen.toml` ueberschreiben).
 
 ### Erkenntnisse Sicherheits-Nachbesserung (2026-10-08)
 - Anlass: externe Auswertung (Reachy-Luecken, Claude-Actions). Stellungnahme: Reachy-Luecken betreffen den

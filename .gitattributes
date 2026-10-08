@@ -1,0 +1,3 @@
+# Windows-Batchdateien brauchen CRLF-Zeilenenden (sonst stolpert cmd.exe ueber Klammerbloecke)
+*.cmd text eol=crlf
+*.bat text eol=crlf

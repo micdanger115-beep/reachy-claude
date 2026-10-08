@@ -3,8 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from reachy_claude.assistant import ClaudeAssistant, PrintOnly, show_answer
-from reachy_claude.claude import ClaudeError, ClaudeResult
+from reachy_claude.assistant import (
+    BUSY_MESSAGE,
+    NOTHING_TO_CANCEL,
+    NOTHING_TO_REPEAT,
+    ClaudeAssistant,
+    Control,
+    PrintOnly,
+    control_word,
+    show_answer,
+)
+from reachy_claude.claude import CANCELLED_MESSAGE, ClaudeCancelled, ClaudeError, ClaudeResult
 
 
 class FakeVoice:
@@ -21,11 +30,21 @@ class FakeClaude:
         self.calls: list[tuple[str, bool]] = []
         self.error: str | None = None
         self.gate: threading.Event | None = None
+        self.cancelled = False
+
+    def cancel(self) -> bool:
+        if self.gate is None or self.gate.is_set():
+            return False
+        self.cancelled = True
+        self.gate.set()
+        return True
 
     def ask(self, prompt: str, new_conversation: bool = False) -> ClaudeResult:
         self.calls.append((prompt, new_conversation))
         if self.gate is not None:
             self.gate.wait(5)
+        if self.cancelled:
+            raise ClaudeCancelled(CANCELLED_MESSAGE)
         if self.error:
             raise ClaudeError(self.error)
         return ClaudeResult(self.text, "s1", False, 1.0, None)
@@ -133,3 +152,76 @@ def test_thinking_mood_while_claude_works(tmp_path: Path) -> None:
     claude.error = "kaputt"
     ClaudeAssistant(claude, voice, lambda _: None, transcript_dir=None, mood=Sink()).handle("y")
     assert moods[-1] is Mood.IDLE  # auch nach Fehler wieder ruhig
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Stopp.", Control.STOP),
+        ("stop!", Control.STOP),
+        ("Abbrechen, bitte", Control.STOP),
+        ("hör auf damit", None),  # "damit" ist kein Fuellwort -> geht an Claude
+        ("Hör auf", Control.STOP),
+        ("brich das sofort ab", Control.STOP),
+        ("Wiederhole das bitte.", Control.REPEAT),
+        ("noch mal", Control.REPEAT),
+        ("Wie bitte?", Control.REPEAT),
+        ("Was hast du gesagt?", Control.REPEAT),
+        ("wiederhole den letzten Test", None),  # echter Auftrag
+        ("stoppe den Server in main.py", None),
+        ("", None),
+    ],
+)
+def test_control_words(text: str, expected: Control | None) -> None:
+    assert control_word(text) is expected
+
+
+def wait_until(condition: object, timeout: float = 5.0) -> None:
+    import time
+
+    deadline = time.monotonic() + timeout
+    while not condition():  # type: ignore[operator]
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+
+
+def test_submit_runs_in_background_and_stop_cancels(tmp_path: Path) -> None:
+    claude = FakeClaude()
+    claude.gate = threading.Event()
+    assistant, voice, lines = make(claude, tmp_path)
+    assistant.submit("baue etwas Grosses")  # kehrt sofort zurueck
+    wait_until(lambda: claude.calls)
+    assert assistant.busy
+    assistant.submit("noch ein Auftrag")
+    assert voice.said[-1] == BUSY_MESSAGE and len(claude.calls) == 1
+    assistant.submit("Stopp!")
+    wait_until(lambda: not assistant.busy)
+    assert voice.said[-1] == CANCELLED_MESSAGE
+    assert "        (Auftrag abgebrochen)" in lines
+    assert not any(line == "Claude:" for line in lines)  # keine Antwort angezeigt
+
+
+def test_stop_without_running_job_says_so(tmp_path: Path) -> None:
+    assistant, voice, _ = make(FakeClaude(), tmp_path)
+    assistant.submit("stopp")
+    assert voice.said == [NOTHING_TO_CANCEL]
+
+
+def test_repeat_says_last_answer_again(tmp_path: Path) -> None:
+    assistant, voice, _ = make(FakeClaude(), tmp_path)
+    assistant.submit("wiederhole")
+    assert voice.said == [NOTHING_TO_REPEAT]
+    assistant.submit("setz x")
+    wait_until(lambda: not assistant.busy and len(voice.said) == 3)
+    assistant.submit("Nochmal, bitte.")
+    assert voice.said[-1] == voice.said[-2] == "Ich habe x gesetzt."
+
+
+def test_shutdown_cancels_running_job(tmp_path: Path) -> None:
+    claude = FakeClaude()
+    claude.gate = threading.Event()
+    assistant, _, _ = make(claude, tmp_path)
+    assistant.submit("lange Aufgabe")
+    wait_until(lambda: claude.calls)
+    assistant.shutdown()
+    assert claude.cancelled and not assistant.busy

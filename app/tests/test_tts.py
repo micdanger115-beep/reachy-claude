@@ -45,7 +45,14 @@ def fake_piper_module(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_voice_repo_path() -> None:
     assert voice_repo_path("de_DE-thorsten-medium") == "de/de_DE/thorsten/medium"
-    for bad in ("thorsten", "de-thorsten-medium", "a-b-c-d"):
+    for bad in (
+        "thorsten",
+        "de-thorsten-medium",
+        "a-b-c-d",
+        "../de_DE-x-medium",
+        "de_DE-x/../y-medium",
+        "de_DE-x-medium\n",
+    ):
         with pytest.raises(ValueError):
             voice_repo_path(bad)
 

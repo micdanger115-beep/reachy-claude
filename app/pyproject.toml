@@ -50,5 +50,5 @@ strict = true
 files = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["reachy_mini", "reachy_mini.*", "faster_whisper", "faster_whisper.*", "nvidia", "piper", "piper.*", "huggingface_hub"]
+module = ["reachy_mini", "reachy_mini.*", "faster_whisper", "faster_whisper.*", "nvidia", "piper", "piper.*", "huggingface_hub", "ctranslate2"]
 ignore_missing_imports = true

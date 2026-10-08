@@ -246,3 +246,86 @@ def test_on_wake_not_called_without_wake_word() -> None:
     parser.handle("Wie spät ist es?")
     parser.handle("Hey Claude.")
     assert wakes == [1]
+
+
+def test_listen_ignores_audio_while_muted() -> None:
+    """Spricht Reachy aus dem Hintergrund (Claude arbeitet), wird das Echo nicht erkannt."""
+    chunk_s = 0.02
+    audio = np.concatenate([noise(1.0), speech(1.0), noise(1.2), speech(2.5), noise(1.2)])
+    media = ScriptedMedia(audio)
+    stop = threading.Event()
+
+    class ByLength(ScriptedTranscriber):
+        def transcribe(self, audio: Audio) -> str:
+            self.durations.append(audio.size / SAMPLE_RATE)
+            if audio.size / SAMPLE_RATE > 3.0:  # inkl. Vorlauf/Pause: Echo ~2,1 s, Auftrag ~3,6 s
+                self.done.set()
+                return "Claude, echter Auftrag"
+            return "Claude, ECHO"
+
+    calls = 0
+
+    def muted() -> bool:  # genau waehrend des ersten "Satzes" spricht Reachy selbst
+        nonlocal calls
+        calls += 1
+        return 1.0 <= calls * chunk_s <= 2.0
+
+    transcriber = ByLength([], stop)
+    commands: list[str] = []
+    worker = threading.Thread(
+        target=listen,
+        args=(media, transcriber, lambda _: None, commands.append, stop),
+        kwargs={"muted": muted},
+    )
+    worker.start()
+    worker.join(timeout=10)
+    stop.set()
+    worker.join(timeout=2)
+    assert commands == ["echter Auftrag"]
+    assert len(transcriber.durations) == 1
+
+
+def test_speech_gate_mutes_while_speaking_and_shortly_after() -> None:
+    from reachy_claude.listener import DEAF_AFTER_RESPONSE_S, SpeechGate
+
+    clock = Clock()
+    seen: list[bool] = []
+
+    class Voice:
+        def say(self, text: str) -> None:
+            seen.append(gate.muted())
+            clock.now += 2.0
+
+    gate = SpeechGate(Voice(), clock=clock)
+    assert not gate.muted()
+    gate.say("Claude arbeitet noch.")
+    assert seen == [True]
+    assert gate.muted()  # Nachhall
+    clock.now += DEAF_AFTER_RESPONSE_S + 0.1
+    assert not gate.muted()
+
+
+def test_speech_gate_speaks_one_sentence_at_a_time() -> None:
+    from reachy_claude.listener import SpeechGate
+
+    active = 0
+    overlap = False
+    lock = threading.Lock()
+
+    class Voice:
+        def say(self, text: str) -> None:
+            nonlocal active, overlap
+            with lock:
+                active += 1
+                overlap = overlap or active > 1
+            time.sleep(0.05)
+            with lock:
+                active -= 1
+
+    gate = SpeechGate(Voice())
+    threads = [threading.Thread(target=gate.say, args=(f"Satz {i}",)) for i in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not overlap
