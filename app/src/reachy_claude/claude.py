@@ -7,6 +7,10 @@ Sicherheitsprinzipien:
   Windows eine ``.cmd``-Datei ist ("BatBadBut").
 - Rechte ueber ``--permission-mode dontAsk`` + ``--allowedTools``/``--disallowedTools``;
   Shell und Internet-Werkzeuge sind immer gesperrt, MCP-Server werden nicht geladen.
+- Nur die eigenen Benutzer-Einstellungen gelten (``--setting-sources user``): Einstellungen
+  und Hooks aus dem Projektordner (``.claude/settings.json``) koennten sonst an allen
+  Werkzeug-Sperren vorbei Befehle ausfuehren (z. B. in einem fremden, manipulierten Repo).
+- Steuer-Ordner (``.claude``, ``.git`` mit seinen Hooks, ``.vscode``) duerfen nie bearbeitet werden.
 - Timeout beendet den ganzen Prozessbaum.
 """
 
@@ -43,6 +47,8 @@ SYSTEM_PROMPT = (
 ALWAYS_DISALLOWED: tuple[str, ...] = ("Bash", "WebFetch", "WebSearch", "NotebookEdit")
 READ_TOOLS: tuple[str, ...] = ("Read", "Grep", "Glob", "LS", "TodoWrite")
 EDIT_TOOLS: tuple[str, ...] = ("Edit", "MultiEdit", "Write")
+# Gilt fuer alle Bearbeitungs-Werkzeuge und in jeder Ordnertiefe (gitignore-Muster).
+PROTECTED_PATHS: tuple[str, ...] = ("Edit(.claude/**)", "Edit(.git/**)", "Edit(.vscode/**)")
 
 _SESSION_ID_RE = re.compile(r"^[0-9a-fA-F-]{8,64}$")
 
@@ -83,7 +89,7 @@ def build_argv(config: ClaudeSettings, session_id: str | None) -> list[str]:
     # "dontAsk": alles, was nicht ausdruecklich erlaubt ist, wird ohne Rueckfrage verweigert.
     if config.permission is Permission.EDIT:
         allowed = READ_TOOLS + EDIT_TOOLS
-        disallowed = ALWAYS_DISALLOWED
+        disallowed = ALWAYS_DISALLOWED + PROTECTED_PATHS
     else:
         allowed = READ_TOOLS
         disallowed = ALWAYS_DISALLOWED + EDIT_TOOLS
@@ -101,6 +107,8 @@ def build_argv(config: ClaudeSettings, session_id: str | None) -> list[str]:
         "--disallowedTools",
         ",".join(disallowed),
         "--strict-mcp-config",
+        "--setting-sources",
+        "user",
         "--append-system-prompt",
         SYSTEM_PROMPT,
     ]

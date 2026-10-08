@@ -15,12 +15,23 @@
 - [x] Schritt 4: Claude anbinden (`listen -Projekt …`) – echter CLI-Durchlauf ok; wartet auf Test am Reachy
 - [x] Schritt 4 am Reachy bestaetigt
 - [x] Schritt 5: Bewegungen + Stimmenauswahl – Daemon-Simulation ok; wartet auf Test am Reachy
+- [x] Sicherheits-Nachbesserung (vor Schritt 6, freigegeben 2026-10-08): Projekt-Einstellungen/Hooks ignoriert,
+      Steuer-Ordner gesperrt; Reachy-Luecken in SECURITY.md (S10)
 - [ ] Schritt 6: Startskript, Feinschliff
 
 ### Entscheidung Netzlast (2026-10-08)
 - Nutzer bemerkte mehr Ethernet-Last bei laufender App. Ursache: `GstWebRTCClient` empfängt fest
   Kamera-Video (H.264) + Audio; kein „nur Audio“-Modus im SDK. Optionen: so lassen / Video-Transceiver
   per SDK-Interna inaktiv setzen / Feature-Wunsch bei Pollen. **Entscheidung: so lassen.**
+
+### Erkenntnisse Sicherheits-Nachbesserung (2026-10-08)
+- Anlass: externe Auswertung (Reachy-Luecken, Claude-Actions). Stellungnahme: Reachy-Luecken betreffen den
+  Daemon auf dem Roboter (nicht unser PC-Paket); Claude-Actions nutzen wir nicht (CI nur Tests, `contents: read`).
+- **Echte Luecke gefunden und per Test mit echter CLI belegt:** `claude -p` fuehrt Hooks aus
+  `<Projekt>/.claude/settings.json` aus (SessionStart, UserPromptSubmit) – an `--disallowedTools Bash` vorbei.
+  Fix: `--setting-sources user` → Hooks liefen nicht mehr (auch ueber `ClaudeRunner` geprueft).
+- Schreiben in `.claude/`, `.git/`, `.vscode/` blockiert die CLI schon selbst; zusaetzlich ausdruecklich
+  `Edit(.claude/**)` usw. gesperrt (gitignore-Muster, wirkt auch in Unterordnern, gilt auch fuer Write – getestet).
 
 ### Erkenntnisse Schritt 5
 - SDK: `set_target(head=4x4, antennas=[rechts, links] rad)` per WebSocket, 25 Hz; `create_head_pose(x,y,z,roll,pitch,yaw,

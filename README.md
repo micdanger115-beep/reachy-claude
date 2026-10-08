@@ -114,7 +114,9 @@ Reachy: Ich habe in der Datei calc.py die Funktion mul hinzugefügt. Sie multipl
 
 **Was Claude darf** (fest eingebaut): Dateien im Projektordner **lesen** und – mit Rechten
 `edit` (Standard) – **bearbeiten/anlegen**. **Nie**: Shell-Befehle, Internet, Zusatz-Server
-(MCP). Alles andere wird ohne Rückfrage verweigert.
+(MCP), die Ordner `.claude`, `.git` und `.vscode` ändern. Einstellungen und Hooks, die im
+Projektordner liegen, werden ignoriert – auch ein fremdes, manipuliertes Repo kann so keine
+Befehle einschleusen. Alles andere wird ohne Rückfrage verweigert.
 
 | Option | Wirkung |
 |---|---|

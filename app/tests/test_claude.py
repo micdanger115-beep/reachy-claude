@@ -30,6 +30,14 @@ def test_edit_level_allows_edits_but_never_shell_or_web(make_config: ConfigFacto
     assert {"Bash", "WebFetch", "WebSearch"} <= set(disallowed)
     assert "--strict-mcp-config" in argv
     assert "--dangerously-skip-permissions" not in argv
+    assert {"Edit(.claude/**)", "Edit(.git/**)", "Edit(.vscode/**)"} <= set(disallowed)
+
+
+@pytest.mark.parametrize("permission", list(Permission))
+def test_project_settings_and_hooks_are_ignored(make_config: ConfigFactory, permission: Permission) -> None:
+    # Hooks aus .claude/settings.json im Projektordner wuerden sonst Befehle ausfuehren.
+    argv = build_argv(make_config(permission=permission), None)
+    assert argv[argv.index("--setting-sources") + 1] == "user"
 
 
 def test_read_level_disallows_edits(make_config: ConfigFactory) -> None:
@@ -61,6 +69,8 @@ def test_prompt_goes_via_stdin_not_argv(
     call = read_log(log)[0]
     assert call["stdin"] == prompt
     assert all(prompt not in arg for arg in call["argv"])  # type: ignore[union-attr]
+    # Die Schutzregeln kommen unveraendert an (unter Windows ueber die .cmd-Datei).
+    assert call["argv"] == build_argv(make_config(workdir=tmp_path), None)[1:]
     assert result.session_id == "11111111-2222-3333-4444-555555555555"
     assert "SPRECHTEXT:" in result.text
 
