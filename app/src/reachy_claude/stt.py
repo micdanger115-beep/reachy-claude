@@ -19,8 +19,9 @@ logger = logging.getLogger(__name__)
 
 GPU_MODEL = "large-v3-turbo"  # sehr gutes Deutsch, ~1,5 GB, passt locker in 8 GB VRAM
 CPU_MODEL = "small"  # schneller Fallback ohne Grafikkarte
-# Hilft Whisper, das Aktivierungswort richtig zu schreiben.
-INITIAL_PROMPT = "Claude, schreib einen Test fuer die Funktion. Claude, erklaere mir den Code."
+# Hilft Whisper, das Aktivierungswort richtig zu schreiben. Whisper uebernimmt die Schreibweise
+# dieses Textes – deshalb mit echten Umlauten und typischen Programmier-Begriffen.
+INITIAL_PROMPT = "Claude, schreib einen Test für die Login-Funktion in main.py. Claude, erkläre mir den Code."
 
 
 class Transcriber(Protocol):

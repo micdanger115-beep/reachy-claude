@@ -58,3 +58,11 @@ def test_reports_all_errors_when_nothing_works(monkeypatch: pytest.MonkeyPatch) 
     install_fake_whisper(monkeypatch, failing_devices={"cuda", "cpu"})
     with pytest.raises(RuntimeError, match="cuda: .*cublas.*cpu: "):
         WhisperTranscriber()
+
+
+def test_initial_prompt_uses_real_umlauts() -> None:
+    """Whisper kopiert die Schreibweise des Hinweistexts (CI erkannte sonst "fuer" statt "für")."""
+    from reachy_claude.stt import INITIAL_PROMPT
+
+    assert "Claude" in INITIAL_PROMPT
+    assert "für" in INITIAL_PROMPT and "fuer" not in INITIAL_PROMPT

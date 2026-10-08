@@ -25,6 +25,9 @@
   Laufzeit registriert. Startskript installiert es nur, wenn `nvidia-smi` existiert. **Auf echter
   Hardware ungetestet.**
 - Hugging Face ist in der Cloud-Arbeitsumgebung gesperrt → echte Whisper-Pruefung laeuft in CI (Windows).
+- CI-Ergebnis (Whisper `small`, CPU, Piper-Testsprache): Aktivierungswort 3/3 korrekt; Inhalt teils
+  fehlerhaft („Login“ → „Locking“, „main punkt py“ → „meinen Punkt fühlen“). Hinweistext hatte „fuer“
+  ohne Umlaut → Whisper schrieb „fuer“; korrigiert (Hinweistext mit echten Umlauten + Fachbegriffen).
 - faster-whisper 1.2.1 und piper-tts 1.8.0 vertragen sich mit reachy-mini 1.11 (onnxruntime 1.27 bleibt).
 
 ### Erkenntnisse Schritt 1
