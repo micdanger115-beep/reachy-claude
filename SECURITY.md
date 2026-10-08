@@ -12,7 +12,7 @@ Bei jeder Änderung mitpflegen. (v1-Bedrohungsmodell: [`legacy/SECURITY.md`](leg
 | # | Bedrohung | Maßnahme | Stand |
 |---|---|---|---|
 | S1 | Fremde im Netz greifen auf den PC zu | Die App öffnet **keinen Port**; sie verbindet sich selbst zum Roboter | ✅ |
-| S2 | Sprache verlässt das Haus | Spracherkennung (Whisper) und -ausgabe lokal auf dem PC; Audio nur im Heimnetz (WebRTC, Signalisierung auf dem Roboter); Modelle nur einmalig heruntergeladen | ✅ Audio + Erkennung / ⏳ Ausgabe Schritt 3 |
+| S2 | Sprache verlässt das Haus | Spracherkennung (Whisper) und -ausgabe lokal auf dem PC; Audio nur im Heimnetz (WebRTC, Signalisierung auf dem Roboter); Modelle nur einmalig heruntergeladen | ✅ |
 | S3 | Versehentliche Aufträge (Fernseher, Gäste, Fehlerkennung) | Nur Sätze mit Aktivierungswort „Claude“ (am Satzanfang) gehen weiter; „Claude“ allein öffnet nur 8 s lang; ein Auftrag gleichzeitig | ✅ Aktivierungswort / ⏳ Schritt 4 |
 | S4 | Claude richtet Schaden an | Wie v1: `--permission-mode dontAsk`, nur Lesen/Bearbeiten im Projektordner, **keine Shell, kein Internet, keine MCP-Server**, Timeout, Prompt nur über stdin | ⏳ Schritt 4 (Code aus v1 übernommen) |
 | S5 | Manipulierte Texte im Terminal (Steuerzeichen) | Erkannte Texte werden vor Anzeige/Weitergabe bereinigt | ✅ |
@@ -27,3 +27,6 @@ Bei jeder Änderung mitpflegen. (v1-Bedrohungsmodell: [`legacy/SECURITY.md`](leg
 - Der WebRTC-Ton zwischen Reachy und PC ist verschlüsselt (WebRTC/DTLS); die
   Signalisierung (`ws://`, Port 8443) nicht.
 - Keine Sprechererkennung: Jeder im Raum kann „Claude, …“ sagen.
+- **Kamerabild:** Die WebRTC-Verbindung des SDK überträgt fest auch Reachys Kamerabild an den PC
+  (mehr Netzlast im Heimnetz). Es wird weder gespeichert noch ausgewertet. Ein „nur Audio“-Modus
+  existiert im SDK (1.11 und main) nicht; Entscheidung des Nutzers (2026-10-08): **so lassen**.

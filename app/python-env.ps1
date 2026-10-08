@@ -59,9 +59,9 @@ function Initialize-AppEnvironment {
         $venvPython = Get-VenvPython
     }
     # Auch nach einem abgebrochenen ersten Start oder einem Update: fehlende Pakete nachinstallieren.
-    & $venvPython -c "import reachy_claude, reachy_mini, faster_whisper" 2>$null | Out-Host
+    & $venvPython -c "import reachy_claude, reachy_mini, faster_whisper, piper" 2>$null | Out-Host
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Installiere reachy-claude, Reachy-SDK und Spracherkennung (beim ersten Mal einige Minuten) ..."
+        Write-Host "Installiere reachy-claude, Reachy-SDK, Spracherkennung und Sprachausgabe (beim ersten Mal einige Minuten) ..."
         & $venvPython -m pip install --disable-pip-version-check -q -e . | Out-Host
         if ($LASTEXITCODE -ne 0) { Write-Host "Installation fehlgeschlagen (Internetverbindung?)." -ForegroundColor Red; exit 1 }
     }

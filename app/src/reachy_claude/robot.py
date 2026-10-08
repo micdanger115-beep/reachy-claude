@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import logging
 import socket
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any, Protocol
 
 import numpy as np
 import numpy.typing as npt
+
+from .audio import SAMPLE_RATE
 
 logger = logging.getLogger(__name__)
 
@@ -100,3 +103,19 @@ def connect(host: str = DEFAULT_ROBOT, timeout_s: float = 10.0, debug: bool = Fa
         raise RobotConnectionError(explain_connection_failure(host, exc)) from exc
     with mini:
         yield mini
+
+
+PLAYBACK_TAIL_S = 0.3  # Puffer, bis Reachys Lautsprecher wirklich fertig ist
+
+
+def play(
+    media: RobotMedia, samples: npt.NDArray[np.float32], sleep: Callable[[float], None] | None = None
+) -> None:
+    """Audio (16 kHz mono) auf Reachys Lautsprecher abspielen und warten, bis es fertig ist."""
+    sleep = sleep or time.sleep
+    media.start_playing()
+    try:
+        media.push_audio_sample(samples)  # nicht blockierend
+        sleep(samples.size / SAMPLE_RATE + PLAYBACK_TAIL_S)
+    finally:
+        media.stop_playing()

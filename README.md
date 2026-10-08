@@ -15,18 +15,40 @@ Antwort vor.
 
 ---
 
-## Stand: Schritt 2 von 6
+## Stand: Schritt 3 von 6
 
 Die App wird schrittweise gebaut; jeden Schritt kannst du selbst am echten Reachy testen.
 
 | Schritt | Inhalt | Stand |
 |---|---|---|
 | 1 | **Audio-Test:** PC hört Reachys Mikrofon, spielt auf Reachys Lautsprecher | ✅ am Reachy getestet |
-| 2 | **Spracherkennung + Aktivierungswort „Claude“**, Ausgabe als Text | ✅ fertig – bitte testen |
-| 3 | Sprachausgabe auf Reachy (deutsche Stimme) | geplant |
+| 2 | **Spracherkennung + Aktivierungswort „Claude“**, Ausgabe als Text | ✅ am Reachy getestet (GPU) |
+| 3 | **Sprachausgabe auf Reachy** (deutsche Stimme) | ✅ fertig – bitte testen |
 | 4 | Claude anbinden | geplant |
 | 5 | Lebendige Bewegungen (zuhören, nachdenken, sprechen) | geplant |
 | 6 | Ein Startskript für alles, Feinschliff | geplant |
+
+---
+
+## Schritt 3 testen: Reachy spricht
+
+```powershell
+git pull
+powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 say -Text "Hallo, ich bin Reachy."
+powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen
+```
+
+- Beim ersten Start wird die Sprachausgabe *Piper* installiert und die deutsche Stimme
+  *thorsten-medium* (~60 MB) einmalig heruntergeladen (`app\voices\`). Danach lokal.
+- `say` lässt Reachy einen beliebigen Text sprechen.
+- `listen` begrüßt dich und **bestätigt jeden Auftrag mit Stimme** („Verstanden: …“) –
+  noch ohne Claude (kommt in Schritt 4).
+- Damit Reachy sich nicht selbst zuhört, wird alles verworfen, was das Mikrofon während
+  seiner eigenen Ansage und 0,6 s danach aufnimmt.
+- `-Silent`: Reachy antwortet nur als Text, ohne Stimme.
+
+Bitte achte auf: Klingt die Stimme gut/verständlich? Reagiert Reachy auf seine eigene
+Ansage (sollte er nicht)? Wie lange dauert es vom Satzende bis Reachy antwortet?
 
 ---
 
@@ -144,6 +166,7 @@ Verbindungsaufbau übernimmt Reachy selbst (Port 8443) – **kein Cloud-Dienst**
 | Daten | Weg | Internet? |
 |---|---|---|
 | Mikrofon-Audio | Reachy → PC (Heimnetz) | nein |
+| **Kamerabild** (H.264) – wird nicht genutzt, das SDK überträgt es fest mit | Reachy → PC (Heimnetz), weder gespeichert noch ausgewertet | nein |
 | Erkannter Text, Antworten, Mitschrift | nur auf dem PC | nein |
 | Vorgelesene Antwort (Audio) | PC → Reachy (Heimnetz) | nein |
 | Auftrag + benötigte Projektdateien (ab Schritt 4) | PC → Anthropic | **ja** |
@@ -167,7 +190,8 @@ reachy-claude/
 │   │   ├── segmenter.py     Sätze aus dem Mikrofon-Strom schneiden (Pegel, lernt Grundrauschen)
 │   │   ├── stt.py           Spracherkennung (faster-whisper; GPU, sonst CPU)
 │   │   ├── wakeword.py      Aktivierungswort „Claude“ (tolerant: Cloud, Klod …)
-│   │   └── listener.py      Schritt 2: Mikrofon-Thread → Sätze → Text → Auftrag
+│   │   ├── tts.py           Sprachausgabe (Piper, deutsche Stimme, 16 kHz)
+│   │   └── listener.py      Mikrofon-Thread → Sätze → Text → Auftrag; Voice: Reachy spricht (ohne Selbstgespräch)
 │   ├── tests/               pytest mit nachgebautem Reachy und simulierter Uhr
 │   │   └── data/            echte Sprach-Testaufnahme (Regressionstest)
 │   └── python-env.ps1       Python finden, .venv einrichten/reparieren
@@ -185,6 +209,8 @@ Lautsprecher und eine Uhr, damit nichts wirklich warten muss. CI
 (`.github/workflows/tests.yml`) läuft auf Ubuntu und Windows; unter Windows wird
 zusätzlich die **komplette Installation inkl. Reachy-SDK** und das Startskript unter
 Windows PowerShell 5.1 geprüft.
+
+**Verifiziert Schritt 3 (2026-10-08):** 55 Tests ✅ (u. a. „Reachy hört sich nicht selbst zu“ – Gegenprobe: ohne Echo-Löschen wird der Test rot) · echte Piper-Synthese lokal ✅ · CI: Piper thorsten-medium + Rundweg Piper → Whisper → Aktivierungswort.
 
 **Verifiziert Schritt 2 (2026-10-08):** 46 Tests ✅ · Satzerkennung mit echter (synthetischer) deutscher Sprache + Raumrauschen ✅ (dabei Schwelle von 12 auf 6 dB korrigiert) · echte Whisper-Erkennung läuft in CI unter Windows (hier blockiert die Umgebung Hugging Face).
 

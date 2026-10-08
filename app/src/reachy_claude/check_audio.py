@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 
 from .audio import SAMPLE_RATE, Audio, level_bar, level_dbfs, save_wav, silence, to_mono, tone
-from .robot import RobotMedia
+from .robot import RobotMedia, play
 
 MIC_READY_TIMEOUT_S = 5.0
 LEVEL_INTERVAL_S = 0.25
@@ -71,17 +71,6 @@ def record(
         return np.concatenate(chunks)
     finally:
         media.stop_recording()
-
-
-def play(media: RobotMedia, samples: Audio, sleep: Callable[[float], None] | None = None) -> None:
-    """Audio auf Reachys Lautsprecher abspielen und warten, bis es fertig ist."""
-    sleep = sleep or time.sleep
-    media.start_playing()
-    try:
-        media.push_audio_sample(samples)  # nicht blockierend
-        sleep(samples.size / SAMPLE_RATE + 0.3)
-    finally:
-        media.stop_playing()
 
 
 def peak_dbfs(samples: Audio, window: int = SAMPLE_RATE // 10) -> float:

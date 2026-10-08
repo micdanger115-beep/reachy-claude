@@ -9,11 +9,24 @@
 
 ### Fortschritt
 - [x] Schritt 1: Audio-Test `reachy-claude check-audio` – **am Reachy erfolgreich** (Sprache −14…−18 dB, Raum ~−40 dB)
-- [x] Schritt 2: Spracherkennung + Aktivierungswort `reachy-claude listen` – wartet auf Test am Reachy
-- [ ] Schritt 3: Sprachausgabe
+- [x] Schritt 2: Spracherkennung + Aktivierungswort `reachy-claude listen` – **am Reachy erfolgreich** (GPU, „Claude“ zuverlässig)
+- [x] Schritt 3: Sprachausgabe `reachy-claude say` / Antworten in `listen` – wartet auf Test am Reachy
 - [ ] Schritt 4: Claude anbinden
 - [ ] Schritt 5: Bewegungen
 - [ ] Schritt 6: Startskript, Feinschliff
+
+### Entscheidung Netzlast (2026-10-08)
+- Nutzer bemerkte mehr Ethernet-Last bei laufender App. Ursache: `GstWebRTCClient` empfängt fest
+  Kamera-Video (H.264) + Audio; kein „nur Audio“-Modus im SDK. Optionen: so lassen / Video-Transceiver
+  per SDK-Interna inaktiv setzen / Feature-Wunsch bei Pollen. **Entscheidung: so lassen.**
+
+### Erkenntnisse Schritt 3
+- Piper 1.8 (`PiperVoice.load/synthesize`, Chunks mit `audio_float_array`), Stimme `de_DE-thorsten-medium`
+  per `hf_hub_download` aus `rhasspy/piper-voices` nach `app/voices`. Ausgabe auf 16 kHz umgerechnet
+  (linear), Spitze auf 0,8 normiert. Lokal: 4,2 s Sprache in 0,6 s erzeugt (schwache Cloud-CPU).
+- Kein Selbstgespraech: Antwort laeuft blockierend im Hauptthread; danach Mikrofon-Warteschlange leeren,
+  Satzerkennung zuruecksetzen, 0,6 s „taub“ (Netzlatenz/Nachhall). Test mit phasenweisem Fake-Mikrofon,
+  Gegenprobe ohne Echo-Loeschen schlaegt fehl.
 
 ### Erkenntnisse Schritt 2
 - Satzerkennung: eigene Pegel-Erkennung (30-ms-Frames, Grundrauschen = 10 %-Quantil der letzten 3 s,

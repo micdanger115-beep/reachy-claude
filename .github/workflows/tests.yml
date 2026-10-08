@@ -63,6 +63,14 @@ jobs:
         run: |
           .\.venv\Scripts\python.exe -c "from pathlib import Path; from reachy_claude.audio import load_wav; from reachy_claude.segmenter import SpeechSegmenter; from reachy_claude.stt import SttConfig, WhisperTranscriber; from reachy_claude.wakeword import parse_wake; audio, _ = load_wav(Path('tests/data/vier_saetze_raumrauschen.wav')); seg = SpeechSegmenter(); utts = [u for i in range(0, audio.size, 320) for u in seg.feed(audio[i:i+320])]; stt = WhisperTranscriber(SttConfig(device='cpu')); texts = [stt.transcribe(u) for u in utts]; [print(repr(t), parse_wake(t).kind.name) for t in texts]; kinds = [parse_wake(t).kind.name for t in texts]; raise SystemExit(0 if kinds[1] == 'COMMAND' and kinds[0] == 'NONE' else 1)"
           if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Sprachausgabe (Piper thorsten-medium von Hugging Face) erzeugt 16-kHz-Audio
+        run: |
+          .\.venv\Scripts\python.exe -c "from reachy_claude.tts import PiperSpeaker; from reachy_claude.audio import SAMPLE_RATE; sp = PiperSpeaker(); a = sp.synthesize('Ich habe die Funktion ergänzt. Sie gibt a minus b zurück.'); d = a.size / SAMPLE_RATE; print(sp.description, round(d, 2), 's', round(float(abs(a).max()), 2)); raise SystemExit(0 if 2.0 < d < 8.0 else 1)"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Rundweg Sprachausgabe -> Spracherkennung (Piper spricht, Whisper erkennt)
+        run: |
+          .\.venv\Scripts\python.exe -c "from reachy_claude.tts import PiperSpeaker; from reachy_claude.stt import SttConfig, WhisperTranscriber; from reachy_claude.wakeword import parse_wake; text = WhisperTranscriber(SttConfig(device='cpu')).transcribe(PiperSpeaker().synthesize('Claude, schreib bitte einen Test.')); r = parse_wake(text); print(repr(text), r.kind.name, repr(r.command)); raise SystemExit(0 if r.kind.name == 'COMMAND' else 1)"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
   legacy:
     name: Legacy v1 (Bridge + Roboter-Tool)

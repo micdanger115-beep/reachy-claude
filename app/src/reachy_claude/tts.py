@@ -1,0 +1,110 @@
+"""Sprachausgabe lokal auf dem PC mit Piper (deutsche Stimme, laeuft auf dem Prozessor).
+
+Die Stimme wird beim ersten Start einmalig von Hugging Face (``rhasspy/piper-voices``)
+heruntergeladen und in ``app/voices`` abgelegt; danach wird nur noch lokal gerechnet.
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Protocol
+
+import numpy as np
+
+from .audio import SAMPLE_RATE, Audio
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_VOICE = "de_DE-thorsten-medium"
+VOICES_REPO = "rhasspy/piper-voices"
+DEFAULT_VOICE_DIR = Path("voices")
+TARGET_PEAK = 0.8  # etwas Luft nach oben, damit Reachys Lautsprecher nicht uebersteuert
+
+
+class Speaker(Protocol):
+    """Text -> Audio (16 kHz mono)."""
+
+    description: str
+
+    def synthesize(self, text: str) -> Audio: ...
+
+
+@dataclass(frozen=True)
+class TtsConfig:
+    """Stimme und Sprechtempo (``length_scale`` > 1 = langsamer)."""
+
+    voice: str = DEFAULT_VOICE
+    voice_dir: Path = DEFAULT_VOICE_DIR
+    length_scale: float = 1.0
+
+
+def voice_repo_path(voice: str) -> str:
+    """Pfad im Repo ``rhasspy/piper-voices``, z. B. ``de/de_DE/thorsten/medium``."""
+    parts = voice.split("-")
+    if len(parts) != 3 or "_" not in parts[0]:
+        raise ValueError(f"Ungueltiger Stimmenname: {voice!r} (Beispiel: {DEFAULT_VOICE})")
+    locale, name, quality = parts
+    return f"{locale.split('_')[0]}/{locale}/{name}/{quality}"
+
+
+def ensure_voice(config: TtsConfig) -> Path:
+    """Stimme lokal bereitstellen (einmaliger Download); gibt den Pfad zur .onnx-Datei zurueck."""
+    model = config.voice_dir / f"{config.voice}.onnx"
+    if model.is_file() and model.with_suffix(".onnx.json").is_file():
+        return model
+    from huggingface_hub import hf_hub_download
+
+    config.voice_dir.mkdir(parents=True, exist_ok=True)
+    base = voice_repo_path(config.voice)
+    for suffix in (".onnx", ".onnx.json"):
+        downloaded = hf_hub_download(
+            VOICES_REPO, f"{base}/{config.voice}{suffix}", local_dir=config.voice_dir
+        )
+        Path(downloaded).replace(config.voice_dir / f"{config.voice}{suffix}")
+    return model
+
+
+def resample(samples: Audio, rate_in: int, rate_out: int = SAMPLE_RATE) -> Audio:
+    """Einfaches lineares Umrechnen der Abtastrate (fuer Sprache ausreichend)."""
+    if rate_in == rate_out or samples.size == 0:
+        return samples.astype(np.float32, copy=False)
+    duration = samples.size / rate_in
+    n_out = max(1, round(duration * rate_out))
+    x_out = np.arange(n_out, dtype=np.float64) / rate_out
+    x_in = np.arange(samples.size, dtype=np.float64) / rate_in
+    return np.interp(x_out, x_in, samples).astype(np.float32)
+
+
+def normalize(samples: Audio, peak: float = TARGET_PEAK) -> Audio:
+    """Lautstaerke auf einen festen Spitzenwert bringen."""
+    current = float(np.max(np.abs(samples))) if samples.size else 0.0
+    if current <= 1e-6:
+        return samples
+    return (samples * (peak / current)).astype(np.float32)
+
+
+class PiperSpeaker:
+    """Piper-Stimme; liefert 16-kHz-Audio passend zu Reachys Lautsprecher."""
+
+    def __init__(self, config: TtsConfig | None = None, voice: Any = None) -> None:
+        self._config = config or TtsConfig()
+        if voice is None:
+            from piper import PiperVoice
+
+            voice = PiperVoice.load(ensure_voice(self._config))
+        self._voice = voice
+        self.description = f"Piper '{self._config.voice}'"
+
+    def synthesize(self, text: str) -> Audio:
+        """Text sprechen; leerer Text ergibt leeres Audio."""
+        if not text.strip():
+            return np.zeros(0, dtype=np.float32)
+        from piper import SynthesisConfig
+
+        chunks = list(self._voice.synthesize(text, SynthesisConfig(length_scale=self._config.length_scale)))
+        if not chunks:
+            return np.zeros(0, dtype=np.float32)
+        audio = np.concatenate([np.asarray(c.audio_float_array, dtype=np.float32) for c in chunks])
+        return normalize(resample(audio, int(chunks[0].sample_rate)))

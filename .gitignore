@@ -10,3 +10,4 @@ __pycache__/
 aufnahmen/
 *.wav
 !app/tests/data/*.wav
+app/voices/
