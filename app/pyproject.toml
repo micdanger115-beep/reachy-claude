@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reachy-claude"
+version = "0.2.0"
+description = "Mit Reachy Mini sprechen: Anweisungen an Claude Code auf dem PC, Reachy liest die Antwort vor."
+requires-python = ">=3.11"
+dependencies = [
+  # Muss zur Software-Version des Roboters passen (Dashboard -> Einstellungen).
+  "reachy-mini~=1.11.0",
+  "numpy>=2.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]
+
+[project.scripts]
+reachy-claude = "reachy_claude.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM"]
+ignore = ["E501"]  # Zeilenlaenge regelt "ruff format"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["reachy_mini", "reachy_mini.*"]
+ignore_missing_imports = true

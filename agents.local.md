@@ -3,10 +3,15 @@
 > Lokaler Kontext für AI-Agenten (Claude Code), damit spätere Sitzungen nahtlos weitermachen.
 
 ## Projekt
-- **Reachy Claude**: Sprache → Claude Code auf dem Windows-PC des Nutzers, Reachy liest die Erklärung vor.
-- Nutzt die offizielle Python-Conversation-App von Pollen (externes Profil + externes Tool, kein Fork),
-  PC-Dienst `bridge/` (claude-bridge), optionaler Patch `patches/listening_motion.patch`.
-- Einstieg: `README.md` (§9 = Stand & nächste Schritte), `plan.md`, `SECURITY.md`.
+- **Reachy Claude**: Sprache → Claude Code auf dem Windows-PC des Nutzers, Reachy liest die Antwort vor.
+- **v2 (aktuell):** eine PC-App `app/` (Paket `reachy_claude`), verbindet sich per Reachy-SDK
+  (`reachy-mini~=1.11.0`, WebRTC) mit dem Roboter; auf Reachy wird nichts installiert.
+  Aktivierungswort „Claude“. Umsetzung in 6 Schritten (siehe `plan.md` → Fortschritt).
+- **v1 (Archiv):** `legacy/` – Conversation-App + claude-bridge; `runner.py`/`speech.py`
+  von dort werden in Schritt 4 übernommen.
+- Einstieg: `README.md`, `plan.md`, `SECURITY.md`.
+- Hardware des Nutzers: RTX 4060 (8 GB VRAM), 32 GB RAM, Windows; will nicht plaudern,
+  nur Aufträge an Claude geben.
 - Herkunft: entstanden im Repo `micdanger115-beep/Reachy_` (Ordner `reachy_claude/`), dann ausgelagert.
 
 ## Roboter

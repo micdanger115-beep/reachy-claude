@@ -1,6 +1,28 @@
 # plan.md — Reachy ↔ Claude Sprachsteuerung ("Reachy Claude")
 
-## v2 (ENTWURF – wartet auf Freigabe, 2026-10-08): schlanke PC-App ohne Conversation-App
+## v2 (FREIGEGEBEN 2026-10-08, in Umsetzung): schlanke PC-App ohne Conversation-App
+
+### Entscheidungen des Nutzers (2026-10-08)
+1. Aktivierungswort **„Claude“**.
+2. v1-Teile nach **`legacy/`** verschoben.
+3. Umsetzung schrittweise; jeder Schritt wird am echten Reachy getestet.
+
+### Fortschritt
+- [x] Schritt 1: Audio-Test `reachy-claude check-audio` (+ `reachy-claude.ps1`) – wartet auf Test am Reachy
+- [ ] Schritt 2: Spracherkennung + Aktivierungswort (Text)
+- [ ] Schritt 3: Sprachausgabe
+- [ ] Schritt 4: Claude anbinden
+- [ ] Schritt 5: Bewegungen
+- [ ] Schritt 6: Startskript, Feinschliff
+
+### Erkenntnisse Schritt 1
+- PyPI-Version `reachy-mini` 1.11.0 (GitHub-main ist 1.12-dev); API identisch für unseren Bedarf.
+  Bringt `onnxruntime==1.27.0` mit (später nutzbar für VAD).
+- `ReachyMini(..., log_level=...)` steuert die SDK-Ausgaben; Standard bei uns WARNING.
+- Fehlerbilder unterscheiden: Port 8000 (Daemon) zu → Roboter nicht erreichbar;
+  8000 offen, 8443 zu → Medienserver/WebRTC-Problem.
+- Im Linux-Container fehlt das GStreamer-WebRTC-Plugin (webrtcsink) → WebRTC-Audio hier nicht
+  testbar; unter Windows liefert `gstreamer-bundle` es mit.
 
 ### Anlass
 - Nutzer will **nicht plaudern**, nur Anweisungen an Claude geben; Reachy liest Claudes Antwort vor.
@@ -71,8 +93,7 @@ Erwartung: deutlich unter 8 GB VRAM; genaue Werte werden gemessen.
 6. Doku, Startskript `start.ps1`, Aufräumen v1.
 
 ### Offene Fragen an den Nutzer
-1. Aktivierung: Aktivierungswort „Claude, …“ (empfohlen) oder jeder Satz geht an Claude?
-2. v1-Teile (Conversation-App-Weg) löschen oder als `legacy/` behalten?
+(beantwortet, siehe Entscheidungen oben)
 
 ---
 
