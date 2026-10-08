@@ -24,6 +24,10 @@
 - Piper 1.8 (`PiperVoice.load/synthesize`, Chunks mit `audio_float_array`), Stimme `de_DE-thorsten-medium`
   per `hf_hub_download` aus `rhasspy/piper-voices` nach `app/voices`. Ausgabe auf 16 kHz umgerechnet
   (linear), Spitze auf 0,8 normiert. Lokal: 4,2 s Sprache in 0,6 s erzeugt (schwache Cloud-CPU).
+- **Fehler am echten Reachy (`say`, keine Stimme, Warnung „AppSrc is not initialized“):** Bei WebRTC ist
+  `start_playing()` ein No-op; der Sendeweg wird erst aufgebaut, wenn der Mikrofon-Strom ankommt (gleicher
+  Callback im SDK). `say` sendete direkt nach dem Verbinden → Ton verworfen. Fix: `robot.wait_for_audio()`
+  wartet auf die ersten Mikrofon-Daten (oeffentliche API) vor jeder Ausgabe; Abspiel-Nachlauf 0,5 s.
 - Kein Selbstgespraech: Antwort laeuft blockierend im Hauptthread; danach Mikrofon-Warteschlange leeren,
   Satzerkennung zuruecksetzen, 0,6 s „taub“ (Netzlatenz/Nachhall). Test mit phasenweisem Fake-Mikrofon,
   Gegenprobe ohne Echo-Loeschen schlaegt fehl.

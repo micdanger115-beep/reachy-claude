@@ -105,7 +105,33 @@ def connect(host: str = DEFAULT_ROBOT, timeout_s: float = 10.0, debug: bool = Fa
         yield mini
 
 
-PLAYBACK_TAIL_S = 0.3  # Puffer, bis Reachys Lautsprecher wirklich fertig ist
+PLAYBACK_TAIL_S = 0.5  # Puffer, bis Reachys Lautsprecher wirklich fertig ist (Netz + Puffer im Roboter)
+AUDIO_READY_TIMEOUT_S = 15.0
+
+
+def wait_for_audio(
+    media: RobotMedia,
+    timeout_s: float = AUDIO_READY_TIMEOUT_S,
+    clock: Callable[[], float] | None = None,
+    sleep: Callable[[float], None] | None = None,
+) -> None:
+    """Warten, bis die WebRTC-Audioverbindung steht.
+
+    Das SDK baut den Sendeweg zum Lautsprecher erst auf, wenn der Mikrofon-Strom ankommt
+    (``GstWebRTCClient``: gleicher Callback). Kommen die ersten Mikrofon-Daten, ist also auch
+    der Lautsprecher bereit – vorher abgespielter Ton ginge verloren ("AppSrc is not initialized").
+    """
+    clock = clock or time.monotonic
+    sleep = sleep or time.sleep
+    media.start_recording()
+    deadline = clock() + timeout_s
+    while media.get_audio_sample() is None:
+        if clock() > deadline:
+            raise RobotConnectionError(
+                "Die Audio-Verbindung zu Reachy kam nicht zustande. Laeuft auf Reachy eine andere App? "
+                "Sonst Reachy im Dashboard neu starten."
+            )
+        sleep(0.02)
 
 
 def play(

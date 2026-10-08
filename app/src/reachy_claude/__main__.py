@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from .check_audio import run_audio_check
-from .robot import DEFAULT_ROBOT, RobotConnectionError, connect
+from .robot import DEFAULT_ROBOT, RobotConnectionError, connect, wait_for_audio
 from .tts import DEFAULT_VOICE, Speaker
 
 logger = logging.getLogger("reachy_claude")
@@ -107,6 +107,7 @@ def run_say(args: argparse.Namespace) -> int:
         return 1
     print(f"Verbinde mit Reachy ({args.robot}) ...")
     with connect(args.robot, debug=args.debug) as mini:
+        wait_for_audio(mini.media)
         Voice(speaker, mini.media, print_line).say(args.text)
     return 0
 
@@ -132,6 +133,7 @@ def run_listen(args: argparse.Namespace) -> int:
 
     print(f"Verbinde mit Reachy ({args.robot}) ...")
     with connect(args.robot, debug=args.debug) as mini:
+        wait_for_audio(mini.media)
         print('Verbunden. Sprich mit Reachy – Auftraege beginnen mit "Claude, ...". Beenden mit Strg+C.\n')
         voice = Voice(speaker, mini.media, print_line) if speaker is not None else None
 
