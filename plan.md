@@ -1,5 +1,83 @@
 # plan.md — Reachy ↔ Claude Sprachsteuerung ("Reachy Claude")
 
+## v2 (ENTWURF – wartet auf Freigabe, 2026-10-08): schlanke PC-App ohne Conversation-App
+
+### Anlass
+- Nutzer will **nicht plaudern**, nur Anweisungen an Claude geben; Reachy liest Claudes Antwort vor.
+- PC: RTX 4060 (8 GB VRAM), 32 GB RAM, Windows.
+- Das lokale Gesprächs-LLM der v1-Stufe 3 (speech-to-speech, ~24 GB VRAM komplett lokal)
+  ist dafür unnötig und zu groß – Claude übernimmt das Denken.
+
+### Verifizierte SDK-Fakten (reachy_mini @ fbdbca3, 2026-10-05)
+- `ReachyMini(host=..., connection_mode="network")` verbindet sich vom PC mit dem Daemon (Port 8000).
+- Media-Backend `WEBRTC` (automatisch bei Remote-Client): `media.get_audio_sample()` liefert das
+  Roboter-Mikrofon (float32, 16 kHz, 2 Kanäle), `media.push_audio_sample()` spielt auf dem
+  Roboter-Lautsprecher (nicht blockierend), `media.get_DoA()` liefert Richtung + Sprach-Erkennung.
+- Signalisierung des Python-WebRTC-Clients: `ws://<roboter>:8443` **auf dem Roboter** → kein Cloud-Handshake.
+- Windows offiziell unterstützt; GStreamer kommt als Wheel (`gstreamer-bundle`) mit.
+
+### Architektur v2
+```
+Reachy (nur Daemon, nichts installiert)          Windows-PC: reachy-claude (eine App)
+  Mikrofon ──WebRTC/Opus (LAN)──────────────────►  VAD (Silero, CPU) → Satz erkannt
+                                                    STT (faster-whisper, GPU) → Text
+                                                    Aktivierungswort? ("Claude, …")
+                                                    ClaudeRunner (claude -p, wie v1) ─► Anthropic
+                                                    Vorlesetext (speech.py, wie v1)
+  Lautsprecher ◄──WebRTC (LAN)───────────────────  TTS (Piper, deutsche Stimme, CPU)
+  Kopf/Antennen ◄──Daemon-API (LAN)──────────────  Bewegung: zuhören / arbeiten / sprechen
+                                                    Terminal: "Du: …" / "Reachy: …" + Mitschrift
+```
+
+### Bausteine und Ressourcen (Planwerte, auf echter Hardware zu prüfen)
+| Baustein | Wahl | läuft auf | Bemerkung |
+|---|---|---|---|
+| Sprachaktivität | Silero VAD | CPU | sehr klein |
+| Spracherkennung | faster-whisper `large-v3-turbo` (int8) | GPU | sehr gutes Deutsch; Fallback `small` auf CPU |
+| Sprachausgabe | Piper, deutsche Stimme | CPU | schnell, offline |
+| Claude | Claude Code CLI wie v1 (`dontAsk`, keine Shell/Web/MCP) | PC | unverändert übernommen |
+Erwartung: deutlich unter 8 GB VRAM; genaue Werte werden gemessen.
+
+### Verhalten
+- Start: Verbindung zu Reachy, Reachy wacht auf (`wake_up`), kurzer Hinweis per Sprache.
+- Zuhören: Antennen/Kopf bewegen sich leicht (lebendig); Mikrofon wird während Reachy spricht stummgeschaltet (kein Selbstgespräch).
+- Nur Sätze mit **Aktivierungswort** (Standard: „Claude, …“) gehen an Claude – Rest wird ignoriert (Fernseher, Gespräche im Raum).
+- Während Claude arbeitet: „Denk“-Bewegung; kurze Ansage „Ich frage Claude.“
+- Antwort: Vorlesetext (2–4 Sätze) per Piper auf Reachys Lautsprecher, dazu Sprech-Bewegung.
+- Befehle: „Claude, neues Thema …“ → neue Claude-Sitzung; „Reachy, schlaf“ → Ruheposition, App endet.
+- Terminal zeigt alles als Text (wie `listen`) und schreibt die Mitschrift.
+
+### Datenflüsse v2
+- Audio: nur Heimnetz (Roboter ↔ PC, WebRTC P2P, lokale Signalisierung).
+- Internet: **nur** der Auftrag an Claude + benötigte Projektdateien → Anthropic.
+- Einmalig: Modelle (Whisper, Piper-Stimme, Silero) und Pakete herunterladen.
+
+### Sicherheit v2
+- Kein offener Port auf dem PC mehr (die App baut die Verbindung zum Roboter selbst auf) → Token/HMAC/Tunnel entfallen.
+- Claude-Rechte wie v1; Aktivierungswort gegen versehentliche Aufträge; ein Auftrag gleichzeitig.
+- Restrisiko: Daemon-API und WebRTC-Signalisierung des Roboters sind im WLAN ohne Passwort erreichbar (Pollen-Design).
+
+### Was aus v1 wegfällt / bleibt
+- Bleibt: `runner.py` (Claude), `speech.py` (Vorlesetext), Konfiguration/Tests davon, `listen` (für die Conversation-App).
+- Entfällt (nach Freigabe in einen Ordner `legacy/` bzw. gelöscht): HTTP-Server, Signatur, Roboter-Tool + Profil,
+  Zuhör-Patch für die Conversation-App, SSH-Tunnel, speech-to-speech-Anleitung.
+
+### Umsetzungsschritte (jeweils mit Tests)
+1. Audio-Test: PC ↔ Reachy (Mikrofon aufnehmen, Ton abspielen) – `reachy-claude check-audio`.
+2. Spracherkennung + Aktivierungswort, Ausgabe nur als Text (ohne Claude).
+3. Sprachausgabe auf Reachy (Echo-Test: „Sag: …“).
+4. Claude anbinden (Runner aus v1).
+5. Bewegungen (zuhören / denken / sprechen).
+6. Doku, Startskript `start.ps1`, Aufräumen v1.
+
+### Offene Fragen an den Nutzer
+1. Aktivierung: Aktivierungswort „Claude, …“ (empfohlen) oder jeder Satz geht an Claude?
+2. v1-Teile (Conversation-App-Weg) löschen oder als `legacy/` behalten?
+
+---
+
+## v1 (umgesetzt 2026-10-02) – über die Conversation-App
+
 Status: **FREIGEGEBEN & umgesetzt** (v0.1, 2026-10-02) – Details/Stand siehe `README.md` §9
 
 ### Entscheidungen des Nutzers (2026-10-02)
