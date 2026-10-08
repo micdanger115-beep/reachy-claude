@@ -12,7 +12,9 @@ def write(path: Path, body: str) -> Path:
 
 
 def test_save_and_load_roundtrip_with_windows_path(tmp_path: Path) -> None:
-    project = tmp_path / 'Projekt mit "Anfuehrung" und \\Backslash'
+    project = (
+        tmp_path / "Mein Projekt (Kopie) – Übung"
+    )  # Leerzeichen, Klammern, Umlaut: unter Windows erlaubt
     project.mkdir()
     file = tmp_path / "einstellungen.toml"
     save_settings(file, project, Permission.READ)
@@ -71,3 +73,12 @@ def test_save_keeps_hand_edited_values(tmp_path: Path) -> None:
     assert settings.timeout_s == 30 * 60
     assert settings.permission is Permission.READ
     assert settings.claude_bin.endswith(FAKE_CLAUDE.name)
+
+
+@pytest.mark.parametrize("value", ['C:\\Users\\a"b\\c', "D:\\code\\neu\\", 'Pfad mit "Anführung"'])
+def test_toml_string_escaping_roundtrip(value: str) -> None:
+    import tomllib
+
+    from reachy_claude.settings import _toml_string
+
+    assert tomllib.loads(f"x = {_toml_string(value)}")["x"] == value
