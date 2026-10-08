@@ -13,13 +13,24 @@
 - [x] Schritt 3: Sprachausgabe `reachy-claude say` / Antworten in `listen` – wartet auf Test am Reachy
 - [x] Schritt 3 am Reachy bestaetigt (Satz vollstaendig, Aussprache passt)
 - [x] Schritt 4: Claude anbinden (`listen -Projekt …`) – echter CLI-Durchlauf ok; wartet auf Test am Reachy
-- [ ] Schritt 5: Bewegungen
+- [x] Schritt 4 am Reachy bestaetigt
+- [x] Schritt 5: Bewegungen + Stimmenauswahl – Daemon-Simulation ok; wartet auf Test am Reachy
 - [ ] Schritt 6: Startskript, Feinschliff
 
 ### Entscheidung Netzlast (2026-10-08)
 - Nutzer bemerkte mehr Ethernet-Last bei laufender App. Ursache: `GstWebRTCClient` empfängt fest
   Kamera-Video (H.264) + Audio; kein „nur Audio“-Modus im SDK. Optionen: so lassen / Video-Transceiver
   per SDK-Interna inaktiv setzen / Feature-Wunsch bei Pollen. **Entscheidung: so lassen.**
+
+### Erkenntnisse Schritt 5
+- SDK: `set_target(head=4x4, antennas=[rechts, links] rad)` per WebSocket, 25 Hz; `create_head_pose(x,y,z,roll,pitch,yaw,
+  mm=True, degrees=True)`; Pitch > 0 = nach unten (Schlafpose 24° + 44 mm tiefer); Antennen (-0.17, +0.17) aufrecht,
+  (-3.05, +3.05) flach. `enable_wobbling()` laesst den Daemon den Kopf zur eingehenden WebRTC-Sprache bewegen.
+- Pollens „Atmen“ als Massstab (Kopf ±5 mm/0,1 Hz, Antennen ±15°/0,5 Hz). Eigene Stimmungen IDLE/LISTENING/THINKING/
+  SPEAKING + „acknowledge“ beim Aktivierungswort; Glaettung mit Zeitkonstante 0,35 s; harte Grenzen.
+- Echter Daemon im Modus `--mockup-sim --no-media`: wake_up 2,5 s, goto_sleep 4 s, Kopf folgt den Stimmungen.
+- Stimmen: 10 deutsche Piper-Stimmen (rhasspy/piper VOICES.md), Mehrsprecher-Stimmen ueber `speaker_id_map`
+  (Name oder Nummer), Befehl `voices`, Startskript `-Stimme/-Sprecher`.
 
 ### Erkenntnisse Schritt 4
 - v1-Bausteine uebernommen: `claude.py` (aus legacy/bridge runner.py, ohne Token/HTTP) und `spoken.py`

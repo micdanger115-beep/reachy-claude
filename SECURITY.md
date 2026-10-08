@@ -18,6 +18,7 @@ Bei jeder Änderung mitpflegen. (v1-Bedrohungsmodell: [`legacy/SECURITY.md`](leg
 | S5 | Manipulierte Texte im Terminal (Steuerzeichen) | Erkannte Texte werden vor Anzeige/Weitergabe bereinigt | ✅ |
 | S6 | Supply-Chain | wenige, verbreitete Abhängigkeiten; Reachy-SDK auf `~=1.11.0` begrenzt | ✅ |
 | S7 | Aufnahmen/Mitschriften auf der Festplatte | Audio-Test-WAV in `app/aufnahmen/`, Claude-Mitschriften in `app/mitschriften/` – nur lokal, nicht in Git | ✅ |
+| S9 | Bewegungen | Kleine, geglättete Bewegungen; harte Grenzen (Kopf ±15°, ±10 mm, Antennen 0–60°); Netzfehler beim Senden brechen nicht ab; beim Beenden weich in Grundstellung, dann Schlafhaltung | ✅ |
 | S8 | Daten an Anthropic | Nur der Auftrag und die Projektdateien, die Claude für den Auftrag liest. Projektordner bewusst wählen (keine Geheimnisse darin) | ✅ |
 
 ## Bewusst offen / Restrisiken

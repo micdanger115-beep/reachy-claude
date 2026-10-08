@@ -29,6 +29,7 @@ DEAF_AFTER_RESPONSE_S = (
 
 Output = Callable[[str], None]
 CommandHandler = Callable[[str], None]
+EventHandler = Callable[[str], None]  # "speech_start", "speech_end", "wake"
 
 
 class Voice:
@@ -53,9 +54,15 @@ class Voice:
 class CommandParser:
     """Entscheidet pro erkanntem Satz, ob (und welcher) Auftrag an Claude geht."""
 
-    def __init__(self, output: Output, clock: Callable[[], float] | None = None) -> None:
+    def __init__(
+        self,
+        output: Output,
+        clock: Callable[[], float] | None = None,
+        on_wake: Callable[[], None] | None = None,
+    ) -> None:
         self._output = output
         self._clock = clock or time.monotonic
+        self._on_wake = on_wake
         self._awaiting_until: float | None = None
 
     def handle(self, text: str) -> str | None:
@@ -69,6 +76,8 @@ class CommandParser:
         awaiting = self._awaiting_until is not None and now <= self._awaiting_until
         self._awaiting_until = None
 
+        if result.kind is not Wake.NONE and self._on_wake is not None:
+            self._on_wake()
         if result.kind is Wake.COMMAND:
             command = result.command
         elif result.kind is Wake.WAKE_ONLY:
@@ -108,12 +117,15 @@ def listen(
     segmenter: SpeechSegmenter | None = None,
     parser: CommandParser | None = None,
     clock: Callable[[], float] | None = None,
+    on_event: EventHandler | None = None,
 ) -> None:
-    """Zuhoeren, bis ``stop`` gesetzt wird."""
+    """Zuhoeren, bis ``stop`` gesetzt wird. ``on_event`` meldet Sprechbeginn/-ende (fuer Bewegungen)."""
     clock = clock or time.monotonic
     segmenter = segmenter or SpeechSegmenter()
     parser = parser or CommandParser(output)
+    emit = on_event or (lambda _event: None)
     deaf_until = 0.0
+    was_speaking = False
     chunks: queue.Queue[Audio] = queue.Queue()
     reader = threading.Thread(
         target=read_microphone, args=(media, chunks, stop), name="mikrofon", daemon=True
@@ -127,7 +139,13 @@ def listen(
                 continue
             if clock() < deaf_until:
                 continue
-            for utterance in segmenter.feed(chunk):
+            utterances = list(segmenter.feed(chunk))
+            if segmenter.in_speech and not was_speaking:
+                emit("speech_start")
+            if was_speaking and not segmenter.in_speech:
+                emit("speech_end")
+            was_speaking = segmenter.in_speech
+            for utterance in utterances:
                 command = parser.handle(transcriber.transcribe(utterance))
                 if command is None:
                     continue
@@ -135,6 +153,7 @@ def listen(
                 # Alles verwerfen, was Reachy waehrenddessen von sich selbst gehoert hat.
                 _drain(chunks)
                 segmenter.reset()
+                was_speaking = False
                 deaf_until = clock() + DEAF_AFTER_RESPONSE_S
                 break
     finally:

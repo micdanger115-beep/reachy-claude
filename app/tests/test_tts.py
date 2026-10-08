@@ -35,8 +35,9 @@ def fake_piper_module(monkeypatch: pytest.MonkeyPatch) -> None:
     module = types.ModuleType("piper")
 
     class SynthesisConfig:
-        def __init__(self, length_scale: float) -> None:
+        def __init__(self, length_scale: float, speaker_id: int | None = None) -> None:
             self.length_scale = length_scale
+            self.speaker_id = speaker_id
 
     module.SynthesisConfig = SynthesisConfig  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "piper", module)
@@ -135,3 +136,40 @@ def test_speaker_uses_pronunciation_but_not_for_display(tmp_path: Path) -> None:
     speaker = PiperSpeaker(TtsConfig(pronunciation_file=tmp_path / "keine.txt"), voice=voice)
     speaker.synthesize("Ich bin Reachy.")
     assert voice.texts == ["Ich bin Rietschi."]
+
+
+def test_all_german_voices_have_valid_names() -> None:
+    from reachy_claude.tts import DEFAULT_VOICE, GERMAN_VOICES
+
+    assert DEFAULT_VOICE in GERMAN_VOICES
+    for name in GERMAN_VOICES:
+        assert voice_repo_path(name).startswith("de/de_DE/")
+
+
+def test_speaker_selection_by_name_or_number() -> None:
+    from types import SimpleNamespace
+
+    from reachy_claude.tts import resolve_speaker, speaker_map
+
+    voice = SimpleNamespace(config=SimpleNamespace(speaker_id_map={"neutral": 4, "whisper": 7}))
+    speakers = speaker_map(voice)
+    assert resolve_speaker("Whisper", speakers) == 7
+    assert resolve_speaker("4", speakers) == 4
+    assert resolve_speaker(None, speakers) is None
+    with pytest.raises(ValueError, match="Verfuegbar: neutral, whisper"):
+        resolve_speaker("laut", speakers)
+    with pytest.raises(ValueError, match="gibt es nicht"):
+        resolve_speaker("9", speakers)
+    with pytest.raises(ValueError, match="nur einen Sprecher"):
+        resolve_speaker("neutral", speaker_map(SimpleNamespace()))
+
+
+def test_multi_speaker_voice_passes_speaker_and_describes_it() -> None:
+    from types import SimpleNamespace
+
+    voice = FakeVoice()
+    voice.config = SimpleNamespace(speaker_id_map={"neutral": 4, "whisper": 7})  # type: ignore[attr-defined]
+    speaker = PiperSpeaker(TtsConfig(speaker="whisper"), voice=voice)
+    speaker.synthesize("Hallo")
+    assert voice.configs[0].speaker_id == 7
+    assert "whisper" in speaker.description and "neutral" in speaker.description

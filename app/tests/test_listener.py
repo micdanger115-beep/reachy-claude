@@ -220,3 +220,29 @@ def test_reachy_does_not_listen_to_itself() -> None:
     worker.join(timeout=2)
     assert commands == ["schreib einen Test", "zweiter Auftrag"]
     assert len(transcriber.durations) == 2  # das Echo wurde nie erkannt
+
+
+def test_events_for_speech_and_wake_word() -> None:
+    audio = np.concatenate([noise(1.0), speech(1.0), noise(1.2)])
+    stop = threading.Event()
+    events: list[str] = []
+    wakes: list[int] = []
+    parser = CommandParser(lambda _: None, on_wake=lambda: wakes.append(1))
+    transcriber = ScriptedTranscriber(["Claude, mach was"], stop)
+    worker = threading.Thread(
+        target=listen,
+        args=(ScriptedMedia(audio), transcriber, lambda _: None, lambda _: None, stop),
+        kwargs={"parser": parser, "on_event": events.append},
+    )
+    worker.start()
+    worker.join(timeout=10)
+    assert events[:2] == ["speech_start", "speech_end"]
+    assert wakes == [1]
+
+
+def test_on_wake_not_called_without_wake_word() -> None:
+    wakes: list[int] = []
+    parser = CommandParser(lambda _: None, on_wake=lambda: wakes.append(1))
+    parser.handle("Wie spät ist es?")
+    parser.handle("Hey Claude.")
+    assert wakes == [1]

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Protocol
 
 from .claude import AskService, ClaudeError, ClaudeResult, write_transcript
+from .motion import Mood
 from .spoken import make_spoken_text
 from .wakeword import clean_text
 
@@ -26,6 +27,12 @@ NEW_TOPIC_RE = re.compile(r"^\s*(?:neues thema|neue unterhaltung|von vorne)\b[\s
 FILLER_WORDS = frozenset({"bitte", "danke", "ok", "okay", "jetzt", "mal"})
 
 Output = Callable[[str], None]
+
+
+class MoodSink(Protocol):
+    """Etwas, das Reachys Stimmung anzeigt (``motion.Animator``)."""
+
+    def set_mood(self, mood: Mood) -> None: ...
 
 
 class Speaks(Protocol):
@@ -66,6 +73,7 @@ class ClaudeAssistant:
         spoken_max_chars: int = 900,
         transcript_dir: Path | None = Path("mitschriften"),
         progress_interval_s: float = PROGRESS_INTERVAL_S,
+        mood: MoodSink | None = None,
     ) -> None:
         self._claude = claude
         self._voice = voice
@@ -74,6 +82,7 @@ class ClaudeAssistant:
         self._transcript_dir = transcript_dir
         self._progress_interval_s = progress_interval_s
         self._fresh_conversation = False
+        self._mood = mood
 
     def handle(self, command: str) -> None:
         """Einen Auftrag ausfuehren (blockiert, bis Claude fertig ist)."""
@@ -110,12 +119,18 @@ class ClaudeAssistant:
                 box["result"] = exc
 
         worker = threading.Thread(target=work, name="claude", daemon=True)
-        worker.start()
-        while True:
-            worker.join(timeout=self._progress_interval_s)
-            if not worker.is_alive():
-                break
-            self._voice.say("Claude arbeitet noch.")
+        if self._mood is not None:
+            self._mood.set_mood(Mood.THINKING)
+        try:
+            worker.start()
+            while True:
+                worker.join(timeout=self._progress_interval_s)
+                if not worker.is_alive():
+                    break
+                self._voice.say("Claude arbeitet noch.")
+        finally:
+            if self._mood is not None:
+                self._mood.set_mood(Mood.IDLE)
 
         outcome = box.get("result")
         if isinstance(outcome, ClaudeError):

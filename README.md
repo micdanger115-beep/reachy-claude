@@ -15,7 +15,7 @@ Antwort vor.
 
 ---
 
-## Stand: Schritt 4 von 6
+## Stand: Schritt 5 von 6
 
 Die App wird schrittweise gebaut; jeden Schritt kannst du selbst am echten Reachy testen.
 
@@ -24,9 +24,59 @@ Die App wird schrittweise gebaut; jeden Schritt kannst du selbst am echten Reach
 | 1 | **Audio-Test:** PC hört Reachys Mikrofon, spielt auf Reachys Lautsprecher | ✅ am Reachy getestet |
 | 2 | **Spracherkennung + Aktivierungswort „Claude“**, Ausgabe als Text | ✅ am Reachy getestet (GPU) |
 | 3 | **Sprachausgabe auf Reachy** (deutsche Stimme) | ✅ am Reachy getestet |
-| 4 | **Claude anbinden** – Reachy liest Claudes Antwort vor | ✅ fertig – bitte testen |
-| 5 | Lebendige Bewegungen (zuhören, nachdenken, sprechen) | geplant |
+| 4 | **Claude anbinden** – Reachy liest Claudes Antwort vor | ✅ am Reachy getestet |
+| 5 | **Lebendige Bewegungen** (aufwachen, zuhören, nachdenken, sprechen, schlafen) | ✅ fertig – bitte testen |
 | 6 | Ein Startskript für alles, Feinschliff | geplant |
+
+---
+
+## Schritt 5: Reachy wirkt lebendig
+
+`listen` steuert jetzt Kopf und Antennen passend zur Situation:
+
+| Situation | Reachy … |
+|---|---|
+| Start | **wacht auf** (Aufwach-Bewegung und -Geräusch) |
+| Ruhe | „atmet“: Kopf hebt/senkt sich ein paar Millimeter, Antennen wippen sanft |
+| Du sprichst | schaut **aufmerksam**: Kopf leicht schräg und nach oben, Antennen aufgestellt |
+| „Claude“ erkannt | Antennen schnellen kurz hoch, kleines Nicken |
+| Claude arbeitet | wirkt **nachdenklich**: Blick nach oben, Kopf pendelt langsam, Antennen wandern |
+| Reachy spricht | Kopf bewegt sich passend zur Sprache (macht der Roboter selbst), Antennen lebhaft |
+| Ende (Strg+C) | weich zurück in Grundstellung, dann **legt er sich schlafen** |
+
+Alle Bewegungen sind klein, weich übergeblendet und auf sichere Grenzen begrenzt
+(Kopf max. 15° bzw. 10 mm). Fällt die Verbindung kurz aus, läuft die App weiter.
+
+| Option | Wirkung |
+|---|---|
+| `-OhneBewegung` | Reachy bewegt sich nicht (nur Stimme) |
+| `-WachBleiben` | am Ende nicht schlafen legen |
+
+## Stimmen
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 voices
+powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 say -Stimme de_DE-kerstin-low -Text "Hallo, ich bin Reachy."
+powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen -Stimme de_DE-kerstin-low
+```
+
+| Stimme | Beschreibung |
+|---|---|
+| `de_DE-thorsten-medium` | Thorsten, männlich, klar (**Standard**) |
+| `de_DE-thorsten-high` | Thorsten, beste Qualität (größer, etwas langsamer) |
+| `de_DE-thorsten-low` | Thorsten, einfache Qualität (klein, schnell) |
+| `de_DE-thorsten_emotional-medium` | Thorsten mit Gefühlslagen – mehrere Sprecher, Auswahl mit `-Sprecher` |
+| `de_DE-kerstin-low` | Kerstin, weiblich |
+| `de_DE-ramona-low` | Ramona, weiblich |
+| `de_DE-eva_k-x_low` | Eva K., weiblich, sehr einfache Qualität |
+| `de_DE-karlsson-low` | Karlsson, männlich |
+| `de_DE-pavoque-low` | Pavoque, männlich |
+| `de_DE-mls-medium` | viele verschiedene Sprecher – Auswahl mit `-Sprecher` |
+
+Jede Stimme wird beim ersten Benutzen einmalig heruntergeladen (ca. 20–110 MB) und liegt
+dann in `app\voices\`. Bei Stimmen mit mehreren Sprechern zeigt die Zeile „Stimme bereit: …“
+die verfügbaren Sprecher an; wählen mit `-Sprecher <Name oder Nummer>`.
+Quelle der Liste: offizielles Piper-Stimmenverzeichnis (rhasspy/piper, VOICES.md).
 
 ---
 
@@ -245,6 +295,7 @@ reachy-claude/
 │   │   ├── claude.py        Claude Code CLI sicher aufrufen (aus v1): dontAsk, keine Shell/Web/MCP, Timeout
 │   │   ├── spoken.py        Vorlesetext aus Claudes Antwort (SPRECHTEXT-Zeile, aus v1)
 │   │   ├── assistant.py     Schritt 4: Auftrag → Claude (mit Zwischenmeldungen) → Terminal + Vorlesen
+│   │   ├── motion.py        Schritt 5: Stimmungen → Kopf/Antennen (25 Hz, geglättet, begrenzt)
 │   │   └── listener.py      Mikrofon-Thread → Sätze → Text → Auftrag; Voice: Reachy spricht (ohne Selbstgespräch)
 │   ├── tests/               pytest mit nachgebautem Reachy und simulierter Uhr
 │   │   └── data/            echte Sprach-Testaufnahme (Regressionstest)
@@ -263,6 +314,8 @@ Lautsprecher und eine Uhr, damit nichts wirklich warten muss. CI
 (`.github/workflows/tests.yml`) läuft auf Ubuntu und Windows; unter Windows wird
 zusätzlich die **komplette Installation inkl. Reachy-SDK** und das Startskript unter
 Windows PowerShell 5.1 geprüft.
+
+**Verifiziert Schritt 5 (2026-10-08):** 126 Tests ✅ (u. a. alle Stimmungen innerhalb der Grenzen, keine Sprünge > 3°/40 ms) · gegen den **echten Reachy-Daemon im Simulationsmodus**: Aufwachen, alle Stimmungen (Kopf folgt: Zuhören 8° schräg/3° hoch, Nachdenken 8° hoch), Antennen-Richtungen, Sprech-Wackeln, Schlafen ✅.
 
 **Verifiziert Schritt 4 (2026-10-08):** 104 Tests ✅ (inkl. v1-Tests des Claude-Aufrufs, unter Windows mit `.cmd`-Startdatei) · **echter Durchlauf mit Claude Code CLI**: Datei geändert, Folgefrage mit Kontext, „neues Thema“ – Sprechtexte mit Piper vertont ✅.
 

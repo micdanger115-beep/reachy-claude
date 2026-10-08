@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .check_audio import run_audio_check
 from .robot import DEFAULT_ROBOT, RobotConnectionError, connect, wait_for_audio
@@ -16,6 +16,7 @@ from .tts import DEFAULT_VOICE, Speaker
 
 if TYPE_CHECKING:
     from .assistant import Speaks
+    from .motion import Animator
     from .settings import ClaudeSettings
 
 logger = logging.getLogger("reachy_claude")
@@ -44,9 +45,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--save", type=Path, default=Path("aufnahmen") / f"audio-test-{time.strftime('%Y%m%d-%H%M%S')}.wav"
     )
 
+    sub.add_parser("voices", help="Alle deutschen Stimmen anzeigen")
+
     say = sub.add_parser("say", help="Schritt 3: Reachy einen Text sprechen lassen")
     say.add_argument("text", help="was Reachy sagen soll")
     say.add_argument("--voice", default=DEFAULT_VOICE, help=f"Piper-Stimme (Standard: {DEFAULT_VOICE})")
+    say.add_argument("--speaker", help="Sprecher bei Stimmen mit mehreren Sprechern (Name oder Nummer)")
 
     listen = sub.add_parser(
         "listen", help="Zuhoeren: 'Claude, ...' geht an Claude Code, Reachy liest die Antwort vor"
@@ -63,7 +67,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     listen.add_argument("--model", help="Whisper-Modell (Standard: large-v3-turbo auf GPU, small auf CPU)")
     listen.add_argument("--voice", default=DEFAULT_VOICE, help=f"Piper-Stimme (Standard: {DEFAULT_VOICE})")
+    listen.add_argument("--speaker", help="Sprecher bei Stimmen mit mehreren Sprechern (Name oder Nummer)")
     listen.add_argument("--silent", action="store_true", help="Reachy antwortet nicht mit Stimme (nur Text)")
+    listen.add_argument("--no-motion", action="store_true", help="Reachy bewegt sich nicht (nur Stimme)")
+    listen.add_argument("--stay-awake", action="store_true", help="Reachy am Ende nicht schlafen legen")
     return parser
 
 
@@ -85,6 +92,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_listen(args)
         if args.command == "say":
             return run_say(args)
+        if args.command == "voices":
+            return run_voices()
         print(f"Verbinde mit Reachy ({args.robot}) ...")
         with connect(args.robot, debug=args.debug) as mini:
             print("Verbunden.")
@@ -98,13 +107,25 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
 
-def load_speaker(voice: str) -> Speaker | None:
+def run_voices() -> int:
+    from .tts import GERMAN_VOICES
+
+    print("Deutsche Stimmen (Auswahl mit -Stimme <Name>, Download beim ersten Benutzen):\n")
+    for name, description in GERMAN_VOICES.items():
+        print(f"  {name:34s} {description}")
+    print(
+        '\nAusprobieren:  .\\reachy-claude.ps1 say -Stimme de_DE-kerstin-low -Text "Hallo, ich bin Reachy."'
+    )
+    return 0
+
+
+def load_speaker(voice: str, speaker_name: str | None = None) -> Speaker | None:
     """Piper-Stimme laden (beim ersten Mal Download); ``None`` mit Meldung bei Fehler."""
     from .tts import PiperSpeaker, TtsConfig
 
     print("Lade Stimme (beim ersten Start einmaliger Download von Hugging Face, ca. 60 MB) ...")
     try:
-        speaker = PiperSpeaker(TtsConfig(voice=voice))
+        speaker = PiperSpeaker(TtsConfig(voice=voice, speaker=speaker_name))
     except Exception as exc:  # Download-, Datei- oder Modellfehler – alle gleich behandeln
         logger.debug("Stimme nicht ladbar", exc_info=True)
         print(f"FEHLER: Stimme '{voice}' konnte nicht geladen werden ({type(exc).__name__}: {exc}).")
@@ -117,7 +138,7 @@ def load_speaker(voice: str) -> Speaker | None:
 def run_say(args: argparse.Namespace) -> int:
     from .listener import Voice
 
-    speaker = load_speaker(args.voice)
+    speaker = load_speaker(args.voice, args.speaker)
     if speaker is None:
         return 1
     print(f"Verbinde mit Reachy ({args.robot}) ...")
@@ -152,7 +173,8 @@ def prepare_claude(args: argparse.Namespace) -> ClaudeSettings | None:
 def run_listen(args: argparse.Namespace) -> int:
     from .assistant import ClaudeAssistant, PrintOnly
     from .claude import ClaudeRunner
-    from .listener import Voice, listen
+    from .listener import CommandParser, Voice, listen
+    from .motion import Mood, MovingVoice
     from .stt import SttConfig, WhisperTranscriber
 
     settings = None if args.no_claude else prepare_claude(args)
@@ -170,17 +192,19 @@ def run_listen(args: argparse.Namespace) -> int:
 
     speaker = None
     if not args.silent:
-        speaker = load_speaker(args.voice)
+        speaker = load_speaker(args.voice, args.speaker)
         if speaker is None:
             return 1
 
     print(f"Verbinde mit Reachy ({args.robot}) ...")
     with connect(args.robot, debug=args.debug) as mini:
         wait_for_audio(mini.media)
+        animator = None if args.no_motion else start_motion(mini)
         print('Verbunden. Sprich mit Reachy – Auftraege beginnen mit "Claude, ...". Beenden mit Strg+C.\n')
-        voice: Speaks = (
+        base_voice: Speaks = (
             Voice(speaker, mini.media, print_line) if speaker is not None else PrintOnly(print_line)
         )
+        voice: Speaks = MovingVoice(base_voice, animator) if animator is not None else base_voice
 
         if settings is None:
 
@@ -189,18 +213,67 @@ def run_listen(args: argparse.Namespace) -> int:
 
         else:
             assistant = ClaudeAssistant(
-                ClaudeRunner(settings), voice, print_line, spoken_max_chars=settings.spoken_max_chars
+                ClaudeRunner(settings),
+                voice,
+                print_line,
+                spoken_max_chars=settings.spoken_max_chars,
+                mood=animator,
             )
             on_command = assistant.handle
 
+        def on_event(event: str) -> None:
+            if animator is None:
+                return
+            if event == "speech_start":
+                animator.set_mood(Mood.LISTENING)
+            elif event == "speech_end" and animator.mood is Mood.LISTENING:
+                animator.set_mood(Mood.IDLE)
+
+        parser = CommandParser(print_line, on_wake=animator.acknowledge if animator is not None else None)
         voice.say(GREETING)
         stop = threading.Event()
         try:
-            listen(mini.media, transcriber, print_line, on_command=on_command, stop=stop)
+            listen(
+                mini.media,
+                transcriber,
+                print_line,
+                on_command=on_command,
+                stop=stop,
+                parser=parser,
+                on_event=on_event,
+            )
         except KeyboardInterrupt:
             stop.set()
             print("Beendet.")
+        finally:
+            if animator is not None:
+                animator.stop()
+                if not args.stay_awake:
+                    print("Reachy legt sich schlafen ...")
+                    try:
+                        mini.goto_sleep()
+                    except Exception as exc:  # Ende soll nie an der Schlafbewegung scheitern
+                        logger.warning("Schlafbewegung fehlgeschlagen: %s", exc)
     return 0
+
+
+def start_motion(mini: Any) -> Animator | None:
+    """Reachy aufwecken, Sprech-Wackeln einschalten und die Bewegung starten."""
+    from reachy_mini.utils import create_head_pose
+
+    from .motion import Animator
+
+    try:
+        print("Reachy wacht auf ...")
+        mini.wake_up()
+        mini.enable_wobbling()  # Kopf bewegt sich passend zur gesprochenen Antwort
+    except Exception as exc:  # Bewegung ist Zugabe: ohne sie geht es trotzdem weiter
+        logger.warning("Aufwachen/Wackeln nicht moeglich: %s", exc)
+        print(f"Hinweis: Bewegungen nicht verfuegbar ({type(exc).__name__}). Es geht ohne weiter.")
+        return None
+    animator = Animator(mini, create_head_pose)
+    animator.start()
+    return animator
 
 
 if __name__ == "__main__":

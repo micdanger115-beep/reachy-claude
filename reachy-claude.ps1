@@ -4,10 +4,11 @@
 #   powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 say -Text "Hallo, ich bin Reachy"
 #   powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen -Projekt "D:\code\mein-projekt"   (einmalig)
 #   powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 listen
+#   powershell -ExecutionPolicy Bypass -File .\reachy-claude.ps1 voices        (Stimmen anzeigen)
 # Beim ersten Start wird eine eigene Python-Umgebung in app\.venv eingerichtet.
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("check-audio", "say", "listen")]
+    [ValidateSet("check-audio", "say", "listen", "voices")]
     [string]$Command = "check-audio",
     [string]$Robot = "reachy-mini.local",
     [int]$Seconds = 5,
@@ -18,6 +19,10 @@ param(
     [ValidateSet("", "read", "edit")]
     [string]$Rechte = "",
     [switch]$OhneClaude,
+    [string]$Stimme = "",
+    [string]$Sprecher = "",
+    [switch]$OhneBewegung,
+    [switch]$WachBleiben,
     [switch]$Silent,
     [switch]$Details
 )
@@ -31,6 +36,10 @@ $cliArgs = @("-m", "reachy_claude", "--robot", $Robot)
 if ($Details) { $cliArgs += "--debug" }
 $cliArgs += $Command
 if ($Command -eq "check-audio") { $cliArgs += @("--seconds", "$Seconds") }
+if ($Command -eq "say" -or $Command -eq "listen") {
+    if ($Stimme) { $cliArgs += @("--voice", $Stimme) }
+    if ($Sprecher) { $cliArgs += @("--speaker", $Sprecher) }
+}
 if ($Command -eq "say") { $cliArgs += $Text }
 if ($Command -eq "listen") {
     $cliArgs += @("--device", $Device)
@@ -38,6 +47,8 @@ if ($Command -eq "listen") {
     if ($Projekt) { $cliArgs += @("--project", $Projekt) }
     if ($Rechte) { $cliArgs += @("--permission", $Rechte) }
     if ($OhneClaude) { $cliArgs += "--no-claude" }
+    if ($OhneBewegung) { $cliArgs += "--no-motion" }
+    if ($WachBleiben) { $cliArgs += "--stay-awake" }
 }
 & $python @cliArgs
 exit $LASTEXITCODE

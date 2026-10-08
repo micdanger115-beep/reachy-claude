@@ -115,3 +115,21 @@ def test_new_topic_variants(tmp_path: Path, text: str) -> None:
     assistant.handle(text)
     assistant.handle("weiter")
     assert claude.calls[-1][1] is True
+
+
+def test_thinking_mood_while_claude_works(tmp_path: Path) -> None:
+    from reachy_claude.motion import Mood
+
+    moods: list[Mood] = []
+
+    class Sink:
+        def set_mood(self, mood: Mood) -> None:
+            moods.append(mood)
+
+    claude = FakeClaude()
+    voice = FakeVoice()
+    ClaudeAssistant(claude, voice, lambda _: None, transcript_dir=None, mood=Sink()).handle("x")
+    assert moods == [Mood.THINKING, Mood.IDLE]
+    claude.error = "kaputt"
+    ClaudeAssistant(claude, voice, lambda _: None, transcript_dir=None, mood=Sink()).handle("y")
+    assert moods[-1] is Mood.IDLE  # auch nach Fehler wieder ruhig

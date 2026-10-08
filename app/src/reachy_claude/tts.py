@@ -19,6 +19,19 @@ from .audio import SAMPLE_RATE, Audio
 logger = logging.getLogger(__name__)
 
 DEFAULT_VOICE = "de_DE-thorsten-medium"
+# Alle deutschen Piper-Stimmen (Quelle: rhasspy/piper VOICES.md). Qualitaet: x_low < low < medium < high.
+GERMAN_VOICES: dict[str, str] = {
+    "de_DE-thorsten-medium": "Thorsten, maennlich, klar (Standard)",
+    "de_DE-thorsten-high": "Thorsten, maennlich, beste Qualitaet (groesser, etwas langsamer)",
+    "de_DE-thorsten-low": "Thorsten, maennlich, einfache Qualitaet (klein, schnell)",
+    "de_DE-thorsten_emotional-medium": "Thorsten mit Gefuehlslagen (mehrere Sprecher, Auswahl mit -Sprecher)",
+    "de_DE-kerstin-low": "Kerstin, weiblich",
+    "de_DE-ramona-low": "Ramona, weiblich",
+    "de_DE-eva_k-x_low": "Eva K., weiblich, sehr einfache Qualitaet",
+    "de_DE-karlsson-low": "Karlsson, maennlich",
+    "de_DE-pavoque-low": "Pavoque, maennlich",
+    "de_DE-mls-medium": "MLS, viele verschiedene Sprecher (Auswahl mit -Sprecher)",
+}
 VOICES_REPO = "rhasspy/piper-voices"
 DEFAULT_VOICE_DIR = Path("voices")
 TARGET_PEAK = 0.8  # etwas Luft nach oben, damit Reachys Lautsprecher nicht uebersteuert
@@ -43,6 +56,7 @@ class TtsConfig:
     voice_dir: Path = DEFAULT_VOICE_DIR
     length_scale: float = 1.0
     pronunciation_file: Path | None = PRONUNCIATION_FILE
+    speaker: str | None = None  # bei Stimmen mit mehreren Sprechern: Name oder Nummer
 
 
 def load_pronunciations(path: Path | None) -> dict[str, str]:
@@ -126,7 +140,14 @@ class PiperSpeaker:
             voice = PiperVoice.load(ensure_voice(self._config))
         self._voice = voice
         self._pronunciations = load_pronunciations(self._config.pronunciation_file)
+        self._speaker_id = resolve_speaker(self._config.speaker, speaker_map(voice))
         self.description = f"Piper '{self._config.voice}'"
+        speakers = speaker_map(voice)
+        if speakers:
+            chosen = next((name for name, sid in speakers.items() if sid == self._speaker_id), None)
+            self.description += (
+                f", Sprecher '{chosen or self._speaker_id or 0}' (verfuegbar: {', '.join(speakers)})"
+            )
 
     def synthesize(self, text: str) -> Audio:
         """Text sprechen; leerer Text ergibt leeres Audio."""
@@ -135,8 +156,32 @@ class PiperSpeaker:
         from piper import SynthesisConfig
 
         spoken = apply_pronunciations(text, self._pronunciations)
-        chunks = list(self._voice.synthesize(spoken, SynthesisConfig(length_scale=self._config.length_scale)))
+        config = SynthesisConfig(length_scale=self._config.length_scale, speaker_id=self._speaker_id)
+        chunks = list(self._voice.synthesize(spoken, config))
         if not chunks:
             return np.zeros(0, dtype=np.float32)
         audio = np.concatenate([np.asarray(c.audio_float_array, dtype=np.float32) for c in chunks])
         return normalize(resample(audio, int(chunks[0].sample_rate)))
+
+
+def speaker_map(voice: Any) -> dict[str, int]:
+    """Sprecher einer Stimme (Name -> Nummer); leer bei Stimmen mit nur einem Sprecher."""
+    config = getattr(voice, "config", None)
+    mapping = getattr(config, "speaker_id_map", None) or {}
+    return {str(name): int(sid) for name, sid in dict(mapping).items()}
+
+
+def resolve_speaker(speaker: str | None, speakers: dict[str, int]) -> int | None:
+    """Sprecher-Name oder -Nummer in eine Nummer uebersetzen (``None`` = Standard der Stimme)."""
+    if speaker is None or speaker == "":
+        return None
+    if speaker.isdigit():
+        number = int(speaker)
+        if speakers and number not in speakers.values():
+            raise ValueError(f"Sprecher {number} gibt es nicht. Verfuegbar: {', '.join(speakers)}")
+        return number
+    for name, number in speakers.items():
+        if name.lower() == speaker.lower():
+            return number
+    available = ", ".join(speakers) if speakers else "keine (Stimme hat nur einen Sprecher)"
+    raise ValueError(f"Sprecher '{speaker}' gibt es nicht. Verfuegbar: {available}")
