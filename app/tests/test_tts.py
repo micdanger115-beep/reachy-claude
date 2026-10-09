@@ -180,3 +180,14 @@ def test_multi_speaker_voice_passes_speaker_and_describes_it() -> None:
     speaker.synthesize("Hallo")
     assert voice.configs[0].speaker_id == 7
     assert "whisper" in speaker.description and "neutral" in speaker.description
+
+
+def test_own_pronunciation_file_overrides_the_shipped_one(tmp_path: Path) -> None:
+    from reachy_claude.tts import load_pronunciations
+
+    shipped = tmp_path / "aussprache.txt"
+    shipped.write_text("Python = Peiton\n", encoding="utf-8")
+    (tmp_path / "aussprache-eigene.txt").write_text("python = Pütton\nGitHub = Gitt-Habb\n", encoding="utf-8")
+    table = load_pronunciations(shipped)
+    assert table["python"] == "Pütton" and "Python" not in table
+    assert table["GitHub"] == "Gitt-Habb" and table["Reachy"] == "Rietschi"

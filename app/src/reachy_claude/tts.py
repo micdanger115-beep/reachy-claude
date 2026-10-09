@@ -38,6 +38,8 @@ VOICES_REPO = "rhasspy/piper-voices"
 DEFAULT_VOICE_DIR = Path("voices")
 TARGET_PEAK = 0.8  # etwas Luft nach oben, damit Reachys Lautsprecher nicht uebersteuert
 PRONUNCIATION_FILE = Path("aussprache.txt")
+# Eigene Ergaenzungen (nicht in Git, damit "git pull" nicht mit deinen Aenderungen kollidiert)
+OWN_PRONUNCIATION_NAME = "aussprache-eigene.txt"
 # Englische Namen spricht die deutsche Stimme sonst "deutsch" aus (Re-ach-ue).
 DEFAULT_PRONUNCIATIONS = {"Reachy": "Rietschi", "Claude": "Klohd"}
 
@@ -62,10 +64,20 @@ class TtsConfig:
 
 
 def load_pronunciations(path: Path | None) -> dict[str, str]:
-    """Standard-Aussprachen plus Eintraege aus ``aussprache.txt`` (``Wort = Lautschrift``)."""
+    """Standard-Aussprachen plus ``aussprache.txt`` plus ``aussprache-eigene.txt`` (``Wort = Lautschrift``).
+
+    Spaetere Eintraege gewinnen – deine eigene Datei also vor der mitgelieferten.
+    """
     table = dict(DEFAULT_PRONUNCIATIONS)
-    if path is None or not path.is_file():
+    if path is None:
         return table
+    for file in (path, path.with_name(OWN_PRONUNCIATION_NAME)):
+        if file.is_file():
+            table = _read_pronunciations(file, table)
+    return table
+
+
+def _read_pronunciations(path: Path, table: dict[str, str]) -> dict[str, str]:
     for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = raw.strip()
         if not line or line.startswith("#"):

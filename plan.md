@@ -10,9 +10,9 @@
 ### Fortschritt
 - [x] Schritt 1: Audio-Test `reachy-claude check-audio` – **am Reachy erfolgreich** (Sprache −14…−18 dB, Raum ~−40 dB)
 - [x] Schritt 2: Spracherkennung + Aktivierungswort `reachy-claude listen` – **am Reachy erfolgreich** (GPU, „Claude“ zuverlässig)
-- [x] Schritt 3: Sprachausgabe `reachy-claude say` / Antworten in `listen` – wartet auf Test am Reachy
+- [x] Schritt 3: Sprachausgabe `reachy-claude say` / Antworten in `listen`
 - [x] Schritt 3 am Reachy bestaetigt (Satz vollstaendig, Aussprache passt)
-- [x] Schritt 4: Claude anbinden (`listen -Projekt …`) – echter CLI-Durchlauf ok; wartet auf Test am Reachy
+- [x] Schritt 4: Claude anbinden (`listen -Projekt …`) – echter CLI-Durchlauf ok
 - [x] Schritt 4 am Reachy bestaetigt
 - [x] Schritt 5: Bewegungen + Stimmenauswahl – **am Reachy bestaetigt** („fuers Erste okay“)
 - [x] Sicherheits-Nachbesserung (vor Schritt 6, freigegeben 2026-10-08): Projekt-Einstellungen/Hooks ignoriert,
@@ -21,7 +21,8 @@
 - [x] Nachbesserung lange Auftraege (Schnitt nach 20 s / Denkpausen / mitwandernde Schwelle) – wartet auf Test am Reachy
 - [x] Pruefrunde Paket A (Sicherheit): Claude nur noch im Projektordner (`--restricted --tools`), Projektordner-/Programm-Pruefung, Schutzpfade, Telemetrie aus
 - [x] Pruefrunde Paket B (Zuhoeren/Abbruch): stopp im Nachlauf, Mikrofon-Ausfall, Weghoeren bei Aufnahme, Abbruch vor Start/stilles Beenden, Stimmung
-- [ ] Pruefrunde Pakete C (Bedienung/Doku), D (Tests)
+- [x] Pruefrunde Paket C (Bedienung/Doku)
+- [ ] Pruefrunde Paket D (Tests)
 - [ ] Danach: Branch nach `main` (nur mit Zustimmung)
 
 ### Plan Pruefrunde mit 4 Agents (2026-10-09, freigegeben: alle Pakete A–D)
@@ -282,7 +283,7 @@ Erwartung: deutlich unter 8 GB VRAM; genaue Werte werden gemessen.
 3. Sprachausgabe auf Reachy (Echo-Test: „Sag: …“).
 4. Claude anbinden (Runner aus v1).
 5. Bewegungen (zuhören / denken / sprechen).
-6. Doku, Startskript `start.ps1`, Aufräumen v1.
+6. Doku, Startskript `start.ps1`, Aufräumen v1. (v1-Plan; heute: `Reachy-Claude.cmd`/`reachy-claude.ps1`)
 
 ### Offene Fragen an den Nutzer
 (beantwortet, siehe Entscheidungen oben)
@@ -291,7 +292,7 @@ Erwartung: deutlich unter 8 GB VRAM; genaue Werte werden gemessen.
 
 ## v1 (umgesetzt 2026-10-02) – über die Conversation-App
 
-Status: **FREIGEGEBEN & umgesetzt** (v0.1, 2026-10-02) – Details/Stand siehe `README.md` §9
+Status: **FREIGEGEBEN & umgesetzt** (v0.1, 2026-10-02) – Details/Stand siehe `legacy/README.md`
 
 ### Entscheidungen des Nutzers (2026-10-02)
 1. Sprach-Backend: **lokal auf dem PC** (speech-to-speech) → Audio bleibt im Heimnetz.

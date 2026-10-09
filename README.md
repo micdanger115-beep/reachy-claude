@@ -32,13 +32,25 @@ Die App wird schrittweise gebaut; jeden Schritt kannst du selbst am echten Reach
 
 ## Schnellstart (Schritt 6)
 
-1. **Voraussetzungen** (einmalig): Python ≥ 3.11 von python.org, [Claude Code](https://claude.com/claude-code)
-   installiert und einmal `claude` im Terminal gestartet (anmelden). Reachy eingeschaltet, im selben Netz.
-2. **Doppelklick auf `Reachy-Claude.cmd`.** Beim ersten Start richtet die App ihre Python-Umgebung
-   ein und lädt Spracherkennung und Stimme (einmalig, ca. 1,5 GB). Ist noch kein Projektordner
-   festgelegt, öffnet sich ein **Ordner-Auswahlfenster**.
-3. **Sprechen:** „Claude, erklär mir die Datei main.py.“ – Reachy liest die Antwort vor.
-4. **Beenden:** Strg+C (Reachy legt sich schlafen).
+1. **Voraussetzungen** (einmalig):
+   - **Python 3.12** (3.11–3.13 gehen; neuere noch nicht): `winget install -e --id Python.Python.3.12`
+     oder von python.org („Add python.exe to PATH“ anhaken).
+   - [Claude Code](https://claude.com/claude-code) installiert und einmal `claude` im Terminal gestartet (anmelden).
+   - Reachy eingeschaltet, im selben WLAN/LAN wie der PC.
+2. **Die App auf den PC holen:** `git clone https://github.com/micdanger115-beep/reachy-claude.git C:\reachy-claude`
+   (oder auf GitHub „Code → Download ZIP“ und entpacken). Am besten in einen Ordner **ohne Umlaute
+   und nicht in OneDrive** (OneDrive würde Mitschriften in die Cloud laden und die Installation stören).
+3. **Doppelklick auf `Reachy-Claude.cmd`.** Beim ersten Start richtet die App ihre Python-Umgebung
+   ein und lädt Reachy-SDK, Spracherkennung und Stimme (einmalig **3–4 GB, 10–30 Minuten** – Fenster
+   offen lassen). Ist noch kein Projektordner festgelegt, öffnet sich ein **Ordner-Auswahlfenster**
+   (falls nicht sichtbar: Taskleiste).
+4. **Sprechen:** „Claude, erklär mir die Datei main.py.“ – Reachy liest die Antwort vor.
+5. **Beenden:** Strg+C. Fragt Windows danach „Batchvorgang abbrechen (J/N)?“, mit **J** bestätigen.
+   Reachy legt sich vorher schlafen (außer mit `-WachBleiben` oder `-Bewegung aus`). Das Fenster
+   bitte nicht mit dem X schließen – dann bleibt Reachy wach stehen.
+
+**Befehle mit Parametern** gibst du in einem Terminal im App-Ordner ein: im Explorer Rechtsklick auf den
+Ordner → „Im Terminal öffnen“, dann z. B. `.\Reachy-Claude.cmd pruefen`.
 
 Optional: `.\Reachy-Claude.cmd verknuepfung` legt eine **Desktop-Verknüpfung** „Reachy Claude“ an.
 
@@ -101,6 +113,17 @@ Lange Aufträge kannst du in Ruhe diktieren: Nach dem Satz wartet Reachy noch 2 
 Während Claude arbeitet, hört Reachy weiter zu (für „stopp“). Ein zweiter Auftrag wird erst
 angenommen, wenn der erste fertig ist. Während Reachy selbst spricht, hört er nicht zu –
 „stopp“ also in einer Sprechpause sagen.
+
+## Wenn etwas nicht klappt
+
+| Problem | Lösung |
+|---|---|
+| „Installation fehlgeschlagen“ / Start hängt nach Abbruch | Ordner `app\.venv` löschen, neu starten (Details in `app\pip-log.txt`) |
+| „Kein passendes Python“ | Python 3.12 installieren (siehe Schnellstart), Fenster neu öffnen |
+| `einstellungen.toml ist fehlerhaft` | Windows-Pfade in einfache Anführungszeichen setzen – oder `app\einstellungen.toml` löschen (wird neu angelegt) |
+| Reachy nicht erreichbar | `.\Reachy-Claude.cmd pruefen`; ggf. mit `-Robot <IP>` starten (IP im Router/in der Reachy-App) |
+| Fenster „hängt“, nachdem du hineingeklickt hast | Windows 10 markiert dann Text und hält das Programm an: **Esc** drücken |
+| Claude „nicht gefunden“ | Claude Code installieren, neues Fenster öffnen; sonst `claude_programm` in `app\einstellungen.toml` |
 
 ## Schritt 5: Reachy wirkt lebendig
 
@@ -182,7 +205,8 @@ Reachy: Ich habe in der Datei calc.py die Funktion mul hinzugefügt. Sie multipl
 - **Folgefragen** („Claude, was hast du gerade geändert?“) setzen dieselbe Unterhaltung fort.
 - **„Claude, neues Thema: …“** (oder „neue Unterhaltung“, „von vorne“) beginnt eine frische Unterhaltung.
 - Dauert es länger, sagt Reachy alle 45 s „Claude arbeitet noch.“ Abbruch nach 15 Minuten.
-- Es läuft immer **ein Auftrag** zur Zeit; währenddessen hört Reachy nicht zu.
+- Es läuft immer **ein Auftrag** zur Zeit. Währenddessen hört Reachy weiter zu – für „stopp“
+  und „wiederhole“; ein neuer Auftrag wird erst nach dem laufenden angenommen.
 
 **Was Claude darf** (fest eingebaut): Dateien **nur im Projektordner** lesen und – mit Rechten
 `edit` (Standard) – bearbeiten/anlegen. **Nie**: Dateien außerhalb des Projektordners, Shell-Befehle
@@ -199,7 +223,10 @@ Alles andere wird ohne Rückfrage verweigert.
 | `-OhneClaude` | Test ohne Claude: Reachy wiederholt nur den Auftrag |
 
 In `app\einstellungen.toml` lassen sich außerdem `timeout_minuten` und `claude_programm`
-(Pfad zu `claude.exe`, falls nicht gefunden) eintragen.
+(Pfad zu `claude.exe`, falls nicht gefunden – nur Programme namens `claude`, `claude.exe` oder
+`claude.cmd`) eintragen. **Windows-Pfade in einfache Anführungszeichen**, z. B.
+`claude_programm = 'C:\Users\anna\.local\bin\claude.exe'` (in doppelten Anführungszeichen
+müssten die Backslashes verdoppelt werden).
 
 ---
 
@@ -214,14 +241,15 @@ git pull
 - Beim ersten Start wird die Sprachausgabe *Piper* installiert und die deutsche Stimme
   *thorsten-medium* (~60 MB) einmalig heruntergeladen (`app\voices\`). Danach lokal.
 - `say` lässt Reachy einen beliebigen Text sprechen.
-- `listen` begrüßt dich und **bestätigt jeden Auftrag mit Stimme** („Verstanden: …“) –
-  noch ohne Claude (kommt in Schritt 4).
+- `listen -OhneClaude` bestätigt jeden Auftrag nur mit Stimme („Verstanden: …“) – zum Testen
+  ohne Claude.
 - Damit Reachy sich nicht selbst zuhört, wird alles verworfen, was das Mikrofon während
-  seiner eigenen Ansage und 0,6 s danach aufnimmt.
+  seiner eigenen Ansage und 1,5 s danach aufnimmt.
 - `-Silent`: Reachy antwortet nur als Text, ohne Stimme.
 - **Aussprache:** Englische Wörter spricht die deutsche Stimme „deutsch“ aus. In
   `app\aussprache.txt` steht, wie sie gesprochen werden sollen (z. B. `Reachy = Rietschi`,
-  `Claude = Klohd`). Die Datei kannst du selbst ergänzen; gilt ab dem nächsten Start.
+  `Claude = Klohd`). Eigene Ergänzungen bitte in **`app\aussprache-eigene.txt`** (gleiches Format,
+  wird nicht von `git pull` überschrieben); gilt ab dem nächsten Start.
 
 Bitte achte auf: Klingt die Stimme gut/verständlich? Reagiert Reachy auf seine eigene
 Ansage (sollte er nicht)? Wie lange dauert es vom Satzende bis Reachy antwortet?
@@ -256,7 +284,7 @@ Du:     Erkläre mir die Datei main.py.
 
 - „Claude“ darf auch mit „Hey/Hallo/Okay“ beginnen. Sagst du nur „Claude.“, gilt der
   **nächste Satz** (innerhalb von 8 Sekunden) als Auftrag.
-- Noch wird **nichts an Claude geschickt** – Schritt 2 zeigt nur, was ankommen würde.
+- (Damals in Schritt 2 ging noch nichts an Claude; seit Schritt 4 schon.)
 
 | Option | Wirkung |
 |---|---|

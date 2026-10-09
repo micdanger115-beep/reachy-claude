@@ -47,8 +47,18 @@ if ($Command -eq "verknuepfung") {
     exit 0
 }
 
+# Relativer Projektpfad (z. B. -Projekt .) bezieht sich auf den Ordner, aus dem gestartet wurde
+# (Reachy-Claude.cmd merkt ihn sich in REACHY_START_DIR, bevor es in den App-Ordner wechselt).
+if ($Projekt) {
+    $Projekt = $Projekt.Trim().TrimEnd('"')  # PS 5.1: "C:\Ordner" kommt sonst mit " am Ende an
+    if (-not [System.IO.Path]::IsPathRooted($Projekt)) {
+        $base = if ($env:REACHY_START_DIR) { $env:REACHY_START_DIR } else { (Get-Location).Path }
+        $Projekt = [System.IO.Path]::GetFullPath((Join-Path $base $Projekt))
+    }
+}
+
 $appDir = Join-Path $PSScriptRoot "app"
-Set-Location -Path $appDir
+Set-Location -LiteralPath $appDir
 . (Join-Path $appDir "python-env.ps1")
 
 $python = Initialize-AppEnvironment
@@ -62,7 +72,7 @@ if ($Command -eq "say" -or $Command -eq "listen") {
     if ($Stimme) { $cliArgs += @("--voice", $Stimme) }
     if ($Sprecher) { $cliArgs += @("--speaker", $Sprecher) }
 }
-if ($Command -eq "say") { $cliArgs += $Text }
+if ($Command -eq "say") { $cliArgs += @("--", $Text) }  # "--": Text darf mit "-" beginnen
 if ($Command -eq "listen") {
     $cliArgs += @("--device", $Device)
     if ($Silent) { $cliArgs += "--silent" }

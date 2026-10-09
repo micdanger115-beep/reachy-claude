@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "reachy-claude"
 version = "0.2.0"
 description = "Mit Reachy Mini sprechen: Anweisungen an Claude Code auf dem PC, Reachy liest die Antwort vor."
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
   # Muss zur Software-Version des Roboters passen (Dashboard -> Einstellungen).
   "reachy-mini~=1.11.0",

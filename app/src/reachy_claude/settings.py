@@ -18,7 +18,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from .robot import DEFAULT_ROBOT
-from .tts import DEFAULT_VOICE, VOICE_NAME_RE
+from .tts import DEFAULT_VOICE, GERMAN_VOICES, VOICE_NAME_RE
 
 SETTINGS_FILE = Path("einstellungen.toml")
 APP_ROOT = Path(__file__).resolve().parents[3]  # Hauptordner reachy-claude (enthaelt app/)
@@ -37,7 +37,7 @@ _LAYOUT: dict[str, dict[str, str]] = {
     },
     "reachy": {
         "roboter": "Name oder IP von Reachy",
-        "stimme": "alle Stimmen: reachy-claude.ps1 voices",
+        "stimme": "alle Stimmen: Reachy-Claude.cmd voices",
         "sprecher": "nur bei Stimmen mit mehreren Sprechern",
         "bewegung": "true = Kopf und Antennen bewegen",
     },
@@ -142,6 +142,14 @@ def _inside(path: Path, folder: Path) -> bool:
     return path == folder or folder in path.parents
 
 
+def _toml_error(path: Path, exc: tomllib.TOMLDecodeError) -> str:
+    return (
+        f"app\\{path.name} ist fehlerhaft ({exc}). Haeufigster Grund: Windows-Pfad in doppelten "
+        "Anfuehrungszeichen. Richtig sind einfache: projektordner = 'D:\\code\\projekt' "
+        "(oder doppelte Backslashes). Notfalls die Datei loeschen – sie wird neu angelegt."
+    )
+
+
 def _home() -> Path:
     return Path.home()
 
@@ -203,19 +211,21 @@ def find_claude(program: str) -> str | None:
     return found
 
 
-def load_settings(path: Path, workdir_override: Path | None = None) -> ClaudeSettings:
+def load_settings(
+    path: Path, workdir_override: Path | None = None, *, find_program: bool = True
+) -> ClaudeSettings:
     """Einstellungen lesen und pruefen; ``workdir_override`` ersetzt den gespeicherten Ordner."""
     data: dict[str, object] = {}
     if path.is_file():
         try:
             data = tomllib.loads(path.read_text(encoding="utf-8")).get("claude", {})
         except tomllib.TOMLDecodeError as exc:
-            raise SettingsError(f"{path} ist fehlerhaft: {exc}") from exc
+            raise SettingsError(_toml_error(path, exc)) from exc
 
     raw_dir = workdir_override or data.get("projektordner")
     if not raw_dir:
         raise MissingProjectError(
-            'Kein Projektordner fuer Claude festgelegt. Einmalig mit -Projekt "D:\\pfad\\zum\\projekt" starten.'
+            'Kein Projektordner fuer Claude festgelegt. Einmalig: Reachy-Claude.cmd listen -Projekt "D:\\pfad\\zum\\projekt"'
         )
     workdir = Path(str(raw_dir)).expanduser()
     if not workdir.is_dir():
@@ -231,7 +241,7 @@ def load_settings(path: Path, workdir_override: Path | None = None) -> ClaudeSet
     if not isinstance(timeout_min, int | float) or not 1 <= timeout_min <= 60:
         raise SettingsError("'timeout_minuten' muss zwischen 1 und 60 liegen.")
 
-    claude_bin = find_claude(claude_program(path))
+    claude_bin = find_claude(claude_program(path)) if find_program else claude_program(path)
     if claude_bin is None:
         raise SettingsError(
             "Claude Code wurde nicht gefunden. Installieren (https://claude.com/claude-code) und einmal "
@@ -259,7 +269,7 @@ def load_reachy_settings(path: Path) -> ReachySettings:
         try:
             data = tomllib.loads(path.read_text(encoding="utf-8")).get("reachy", {})
         except tomllib.TOMLDecodeError as exc:
-            raise SettingsError(f"{path} ist fehlerhaft: {exc}") from exc
+            raise SettingsError(_toml_error(path, exc)) from exc
     return _parse_reachy(data)
 
 
@@ -270,6 +280,10 @@ def _parse_reachy(data: dict[str, object]) -> ReachySettings:
     voice = data.get("stimme", DEFAULT_VOICE)
     if not isinstance(voice, str) or not VOICE_NAME_RE.fullmatch(voice):
         raise SettingsError(f"'stimme' ist kein gueltiger Stimmenname: {voice!r} (Beispiel: {DEFAULT_VOICE})")
+    if voice not in GERMAN_VOICES:
+        raise SettingsError(
+            f"Unbekannte Stimme {voice!r} (Tippfehler?). Alle Stimmen: Reachy-Claude.cmd voices"
+        )
     speaker = data.get("sprecher")
     if speaker is not None and not isinstance(speaker, str | int):
         raise SettingsError("'sprecher' muss ein Name oder eine Nummer sein.")

@@ -71,14 +71,14 @@ def explain_connection_failure(host: str, exc: Exception) -> str:
     if not port_open(host, DAEMON_PORT):
         return (
             f"Reachy unter '{host}' nicht erreichbar {detail}. Ist Reachy eingeschaltet und im selben WLAN? "
-            "Notfalls die IP-Adresse angeben (--robot 192.168.x.y)."
+            "Notfalls die IP-Adresse angeben: Reachy-Claude.cmd -Robot 192.168.x.y"
         )
     if not port_open(host, WEBRTC_SIGNALING_PORT):
         return (
             f"Reachy ist erreichbar, aber sein Audio/Video-Dienst (WebRTC, Port {WEBRTC_SIGNALING_PORT}) "
             f"antwortet nicht {detail}. Reachy im Dashboard neu starten und es erneut versuchen."
         )
-    return f"Verbindung zu Reachy fehlgeschlagen {detail}. Mit --debug starten fuer Details."
+    return f"Verbindung zu Reachy fehlgeschlagen {detail}. Mit -Details starten fuer mehr Informationen."
 
 
 @contextmanager

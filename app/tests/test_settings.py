@@ -186,3 +186,17 @@ def test_claude_is_never_taken_from_the_current_folder(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("shutil.which", lambda _p: str(planted))  # Windows sucht zuerst im aktuellen Ordner
     assert find_claude("claude") is None
+
+
+def test_typo_in_voice_is_rejected_before_saving(tmp_path: Path) -> None:
+    file = tmp_path / "e.toml"
+    with pytest.raises(SettingsError, match="Unbekannte Stimme"):
+        remember_reachy(file, voice="de_DE-kerstn-low")  # sonst scheiterte danach jeder Start
+    assert not file.exists()
+
+
+def test_windows_path_in_double_quotes_gets_a_helpful_message(tmp_path: Path) -> None:
+    file = tmp_path / "einstellungen.toml"
+    file.write_text('[claude]\nprojektordner = "D:\\code\\x"\n', encoding="utf-8")
+    with pytest.raises(SettingsError, match="einfache"):
+        load_settings(file)

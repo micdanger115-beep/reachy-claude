@@ -20,7 +20,7 @@ Bei jeder Änderung mitpflegen. (v1-Bedrohungsmodell: [`legacy/SECURITY.md`](leg
 | S14 | Veraltete Reachy-Software unbemerkt | Startprüfung fragt Reachys Version im Heimnetz ab und warnt bei bekannten Lücken (S10) | ✅ |
 | S5 | Manipulierte Texte im Terminal (Steuerzeichen) | Erkannte Texte werden vor Anzeige/Weitergabe bereinigt | ✅ |
 | S6 | Supply-Chain | wenige, verbreitete Abhängigkeiten; Reachy-SDK auf `~=1.11.0` begrenzt | ✅ |
-| S7 | Aufnahmen/Mitschriften auf der Festplatte | Audio-Test-WAV in `app/aufnahmen/`, Claude-Mitschriften in `app/mitschriften/` – nur lokal, nicht in Git | ✅ |
+| S7 | Aufnahmen/Mitschriften auf der Festplatte | Audio-Test-WAV in `app/aufnahmen/`, Claude-Mitschriften in `app/mitschriften/` – nur lokal, nicht in Git; liegt die App in OneDrive, warnt die Startprüfung (sonst landen sie in der Cloud) | ✅ |
 | S9 | Bewegungen | Kleine, geglättete Bewegungen; harte Grenzen (Kopf ±15°, ±10 mm, Antennen 0–60°); Netzfehler beim Senden brechen nicht ab; beim Beenden weich in Grundstellung, dann Schlafhaltung | ✅ |
 | S10 | Bekannte Lücken in Reachys eigenem Dienst (Pollen, Stand 2026-10-08) | Betreffen die Software **auf dem Roboter**, nicht unser PC-Paket. Datei-Upload ohne Anmeldung (CVE-2026-55419): behoben ab 1.8.2 → Reachy über das Dashboard aktuell halten. Bluetooth-PIN-Umgehung (GHSA-993g-hgjh-whmf): behoben in 1.12.0, noch nicht veröffentlicht. Pfad-Trick in Bluetooth-Befehlen (CVE-2026-62661, hoch): noch kein Fix → Bluetooth nur koppeln, wenn nötig; Fremdgeräte ins Gäste-WLAN. Sobald 1.12 erscheint: Roboter updaten, dann `reachy-mini`-Version der App anheben | ⚠️ |
 | S11 | Angriffe über GitHub (KI-Workflows) | Keine KI-Agenten in GitHub Actions; CI führt nur Tests aus, Rechte `contents: read`, keine Secrets | ✅ |

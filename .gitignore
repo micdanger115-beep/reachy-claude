@@ -13,3 +13,5 @@ aufnahmen/
 app/voices/
 app/einstellungen.toml
 app/mitschriften/
+app/pip-log.txt
+app/aussprache-eigene.txt

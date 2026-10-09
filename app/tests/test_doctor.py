@@ -198,6 +198,7 @@ def test_run_checks_skips_software_when_robot_unreachable(
         "Python-Pakete",
         "Grafikkarte",
         "Stimme",
+        "Speicherort",
         "Claude Code",
         "Projektordner",
         "Reachy erreichbar",
@@ -215,3 +216,13 @@ def test_claude_check_uses_the_configured_program(tmp_path: Path) -> None:
     assert seen == [FAKE_CLAUDE.as_posix()]
     bad = check_claude("C:/boese/start.cmd")
     assert bad.level is Level.FEHLER and "nicht erlaubt" in bad.message
+
+
+def test_onedrive_location_is_warned(tmp_path: Path) -> None:
+    from reachy_claude.doctor import check_location
+
+    assert check_location(tmp_path / "reachy-claude", tmp_path / "code").level is Level.OK
+    assert check_location(Path("/home/anna/onedrive-notizen-alt") / "x", None).level is Level.WARNUNG
+    assert check_location(Path("/home/anna/code-onedrive") / "x", None).level is Level.OK
+    warn = check_location(Path("/Users/anna/OneDrive - Firma/reachy-claude"), None)
+    assert warn.level is Level.WARNUNG and "Cloud" in warn.fix

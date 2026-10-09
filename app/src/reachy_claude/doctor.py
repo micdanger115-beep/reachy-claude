@@ -21,7 +21,14 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from .robot import DAEMON_PORT, WEBRTC_SIGNALING_PORT, port_open
-from .settings import MissingProjectError, SettingsError, claude_program, find_claude, load_settings
+from .settings import (
+    APP_ROOT,
+    MissingProjectError,
+    SettingsError,
+    claude_program,
+    find_claude,
+    load_settings,
+)
 
 Output = Callable[[str], None]
 Version = tuple[int, ...]
@@ -193,25 +200,43 @@ def check_claude(
             "Claude Code",
             Level.FEHLER,
             "installiert, aber nicht angemeldet",
-            "Im Terminal einmal 'claude auth login' ausfuehren.",
+            "Im Terminal einmal 'claude' starten und dich anmelden (oder: claude auth login).",
         )
     return Check("Claude Code", Level.OK, "installiert und angemeldet")
 
 
 def check_project(settings_file: Path) -> Check:
     try:
-        settings = load_settings(settings_file)
+        settings = load_settings(settings_file, find_program=False)  # Claude selbst prueft check_claude
     except MissingProjectError:
         return Check(
             "Projektordner",
             Level.WARNUNG,
             "noch keiner festgelegt (wird beim Start abgefragt)",
-            'Oder einmalig: reachy-claude.ps1 listen -Projekt "D:\\pfad\\zum\\projekt"',
+            'Oder einmalig: Reachy-Claude.cmd listen -Projekt "D:\\pfad\\zum\\projekt"',
         )
     except SettingsError as exc:
         return Check("Projektordner", Level.FEHLER, str(exc), f"{settings_file} korrigieren.")
     rights = "lesen + bearbeiten" if settings.permission.value == "edit" else "nur lesen"
     return Check("Projektordner", Level.OK, f"{settings.workdir} ({rights})")
+
+
+def check_location(app_root: Path, project: Path | None) -> Check:
+    """Liegt die App oder das Projekt in einem Cloud-Sync-Ordner (OneDrive)?"""
+    synced = [
+        path
+        for path in (app_root, project)
+        if path is not None and any(part.lower().startswith("onedrive") for part in path.parts)
+    ]
+    if not synced:
+        return Check("Speicherort", Level.OK, "nicht in einem Cloud-Ordner")
+    return Check(
+        "Speicherort",
+        Level.WARNUNG,
+        "liegt in OneDrive: " + ", ".join(str(path) for path in synced),
+        "OneDrive laedt dann Mitschriften/Aufnahmen in die Cloud und kann die Installation (app\\.venv, "
+        "mehrere GB) stoeren. Besser einen Ordner ausserhalb, z. B. C:\\reachy-claude bzw. D:\\code\\projekt.",
+    )
 
 
 def check_robot(host: str, is_open: Callable[[str, int], bool] = port_open) -> list[Check]:
@@ -281,8 +306,8 @@ def check_robot_software(
                 "Reachy-Version",
                 Level.WARNUNG,
                 f"Reachy hat {_fmt(robot)}, die App nutzt das SDK {_fmt(app)}",
-                "Bei Verbindungsproblemen die SDK-Version in app/pyproject.toml anpassen "
-                "(reachy-mini~=<Reachy-Version>) und app\\.venv neu anlegen.",
+                "Meist unkritisch. Bei Verbindungsproblemen den neuesten Stand der App holen (git pull); "
+                "fuer Entwickler: reachy-mini~=<Reachy-Version> in app/pyproject.toml, dann app\\.venv loeschen.",
             )
         )
     return checks
@@ -306,6 +331,7 @@ def run_checks(
     if with_gpu:
         checks.append(check_gpu(device))
     checks.append(check_voice(voice))
+    checks.append(check_location(APP_ROOT, _project_or_none(settings_file)))
     if with_claude:
         checks.append(check_claude(claude_program(settings_file)))
         if with_project:
@@ -315,6 +341,13 @@ def run_checks(
     if robot[0].level is Level.OK:  # Steuerung erreichbar -> Version abfragen
         checks += check_robot_software(host)
     return checks
+
+
+def _project_or_none(settings_file: Path) -> Path | None:
+    try:
+        return load_settings(settings_file, find_program=False).workdir
+    except SettingsError:
+        return None
 
 
 def has_errors(checks: Iterable[Check]) -> bool:

@@ -22,7 +22,7 @@ def test_port_open_detects_listening_socket() -> None:
     [
         (set(), "nicht erreichbar"),
         ({robot.DAEMON_PORT}, "Audio/Video-Dienst"),
-        ({robot.DAEMON_PORT, robot.WEBRTC_SIGNALING_PORT}, "--debug"),
+        ({robot.DAEMON_PORT, robot.WEBRTC_SIGNALING_PORT}, "-Details"),
     ],
 )
 def test_failure_explanation_distinguishes_causes(

@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.reconfigure(errors="replace")
 
     if args.command == "check-audio" and not 1.0 <= args.seconds <= 60.0:
-        print("--seconds muss zwischen 1 und 60 liegen.")
+        print("-Seconds muss zwischen 1 und 60 liegen.")
         return 2
 
     if args.command == "voices":
@@ -142,9 +142,7 @@ def run_voices() -> int:
     print("Deutsche Stimmen (Auswahl mit -Stimme <Name>, Download beim ersten Benutzen):\n")
     for name, description in GERMAN_VOICES.items():
         print(f"  {name:34s} {description}")
-    print(
-        '\nAusprobieren:  .\\reachy-claude.ps1 say -Stimme de_DE-kerstin-low -Text "Hallo, ich bin Reachy."'
-    )
+    print('\nAusprobieren:  Reachy-Claude.cmd say -Stimme de_DE-kerstin-low -Text "Hallo, ich bin Reachy."')
     return 0
 
 
@@ -181,9 +179,13 @@ def run_doctor(args: argparse.Namespace, reachy: ReachySettings) -> int:
 
 def run_say(args: argparse.Namespace, reachy: ReachySettings) -> int:
     from .listener import Voice
+    from .tts import GERMAN_VOICES
 
     # eigene Stimme zum Ausprobieren; sonst die gespeicherte samt Sprecher
     voice = args.voice or reachy.voice
+    if voice not in GERMAN_VOICES:
+        print(f"FEHLER: Unbekannte Stimme {voice!r} (Tippfehler?). Alle Stimmen: Reachy-Claude.cmd voices")
+        return 2
     speaker_name = args.speaker if (args.voice or args.speaker) else reachy.speaker
     speaker = load_speaker(voice, speaker_name)
     if speaker is None:
@@ -286,7 +288,7 @@ def run_listen(args: argparse.Namespace, reachy: ReachySettings) -> int:
     )
     report(checks, print_line, problems_only=True)
     if has_errors(checks):
-        print("Start abgebrochen – bitte zuerst beheben (Gesamtuebersicht: reachy-claude.ps1 pruefen).")
+        print("Start abgebrochen – bitte zuerst beheben (Gesamtuebersicht: Reachy-Claude.cmd pruefen).")
         return 1
 
     interactive = sys.stdin is not None and sys.stdin.isatty()
