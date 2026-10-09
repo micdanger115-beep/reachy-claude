@@ -22,7 +22,7 @@
 - [x] Pruefrunde Paket A (Sicherheit): Claude nur noch im Projektordner (`--restricted --tools`), Projektordner-/Programm-Pruefung, Schutzpfade, Telemetrie aus
 - [x] Pruefrunde Paket B (Zuhoeren/Abbruch): stopp im Nachlauf, Mikrofon-Ausfall, Weghoeren bei Aufnahme, Abbruch vor Start/stilles Beenden, Stimmung
 - [x] Pruefrunde Paket C (Bedienung/Doku)
-- [ ] Pruefrunde Paket D (Tests)
+- [x] Pruefrunde Paket D (Tests) – 246 Tests; alle Pakete A–D umgesetzt, wartet auf Test am Reachy
 - [ ] Danach: Branch nach `main` (nur mit Zustimmung)
 
 ### Plan Pruefrunde mit 4 Agents (2026-10-09, freigegeben: alle Pakete A–D)
@@ -89,6 +89,16 @@ Ziel: Starten ohne Tippen von Parametern, verstaendliche Fehler vorab, sauberer 
 - Nutzer bemerkte mehr Ethernet-Last bei laufender App. Ursache: `GstWebRTCClient` empfängt fest
   Kamera-Video (H.264) + Audio; kein „nur Audio“-Modus im SDK. Optionen: so lassen / Video-Transceiver
   per SDK-Interna inaktiv setzen / Feature-Wunsch bei Pollen. **Entscheidung: so lassen.**
+
+### Erkenntnisse Pruefrunde Paket D (2026-10-09)
+- Verdrahtung `run_listen` jetzt getestet (Attrappen fuer Roboter/Spracherkennung, echter Assistent + Fake-CLI);
+  Gegenprobe: alle 5 vorher unbemerkten Fehler (muted/immediate/cancels weg, handle statt submit, shutdown weg) → rot.
+- Fake-CLI: liest den Prompt als UTF-8-Bytes (Gegenprobe latin-1 → rot); Modus `sleep_child` prueft, dass der
+  Abbruch auch Unterprozesse beendet (Gegenprobe ohne killpg → rot).
+- Tests fanden zwei echte Fehler: `timeout_minuten = true` / `sprecher = true` wurden akzeptiert (bool ist int).
+- Totes Attribut `SpeechSegmenter.muted` entfernt; Reset- und Untergrenzen-Test verschaerft.
+- Alle Tests laufen im Temp-Ordner (conftest, autouse) – keiner fasst `app/einstellungen.toml`, `voices/` usw. an.
+- Kaputte `einstellungen.toml` wird beim Speichern NICHT still ueberschrieben (Projektordner/Rechte gingen sonst verloren).
 
 ### Erkenntnisse Pruefrunde Paket B (2026-10-09)
 - Nachlauf: Saetze waehrend des Wartens wurden ungeprueft angehaengt → „stopp“ landete im Auftrag. Jetzt: Steuerwort

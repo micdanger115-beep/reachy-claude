@@ -74,15 +74,25 @@ def test_quiet_room_never_triggers() -> None:
     assert run(SpeechSegmenter(), noise(5.0, dbfs=-70.0)) == []
 
 
-def test_muted_and_reset() -> None:
+def test_reset_discards_sentence_and_pre_roll() -> None:
     segmenter = SpeechSegmenter()
-    segmenter.muted = True
-    assert run(segmenter, np.concatenate([noise(0.5), speech(1.0), noise(1.0)])) == []
-    segmenter.muted = False
-    run(segmenter, np.concatenate([noise(0.5), speech(0.5)]))
+    run(segmenter, np.concatenate([noise(1.0), speech(0.5)]))
     assert segmenter.in_speech
     segmenter.reset()
     assert not segmenter.in_speech
+    # nach dem Reset: nur noch Stille -> kein Satz, auch nicht aus Resten von vorher
+    assert run(segmenter, noise(PAUSE)) == []
+    # und der naechste Satz enthaelt nichts von vor dem Reset (Vorlauf geleert)
+    run(segmenter, np.concatenate([noise(1.0), speech(0.4)]))
+    segmenter.reset()
+    (only,) = run(segmenter, np.concatenate([speech(1.0), noise(PAUSE)]))
+    assert only.size / SAMPLE_RATE < 1.0 + SegmenterConfig().end_silence_s + 0.35
+
+
+def test_absolute_floor_ignores_tiny_bumps_in_a_silent_room() -> None:
+    # sehr stiller Raum (-70 dB): ein leises Geraeusch bei -55 dB liegt 15 dB darueber, aber unter -50 dB
+    audio = np.concatenate([noise(1.0, -70.0), noise(0.8, -55.0), noise(PAUSE, -70.0)])
+    assert run(SpeechSegmenter(), audio) == []
 
 
 def test_real_speech_regression_all_four_sentences_found() -> None:

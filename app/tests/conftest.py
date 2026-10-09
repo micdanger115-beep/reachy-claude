@@ -32,6 +32,13 @@ FAKE_CLAUDE = _fake_claude_executable()
 
 
 @pytest.fixture(autouse=True)
+def _own_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Die App liest/schreibt relativ zum aktuellen Ordner (einstellungen.toml, voices/, mitschriften/,
+    # aussprache.txt). Kein Test darf die echten Dateien in app/ anfassen.
+    monkeypatch.chdir(tmp_path)
+
+
+@pytest.fixture(autouse=True)
 def _fake_home(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
     # Test-Ordner liegen unter Windows in AppData\Local\Temp – fuer die Projektordner-Pruefung
     # gilt deshalb ein eigener, leerer "Benutzerordner".

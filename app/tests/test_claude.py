@@ -1,4 +1,5 @@
 import json
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -91,7 +92,7 @@ def test_prompt_goes_via_stdin_not_argv(
 ) -> None:
     log = tmp_path / "log.jsonl"
     monkeypatch.setenv("FAKE_CLAUDE_LOG", str(log))
-    prompt = '"; rm -rf / & echo %PATH%'
+    prompt = '"; rm -rf / & echo %PATH% – Größe ändern, Übung'  # Umlaute: muss als UTF-8 ankommen
     result = ClaudeRunner(make_config(workdir=tmp_path)).ask(prompt)
     call = read_log(log)[0]
     assert call["stdin"] == prompt
@@ -130,10 +131,15 @@ def test_failed_resume_retries_with_fresh_session(
     assert runner.session_id == result.session_id
 
 
-def test_crash_raises_speakable_error(make_config: ConfigFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_crash_raises_speakable_error(
+    make_config: ConfigFactory, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    log = tmp_path / "log.jsonl"
+    monkeypatch.setenv("FAKE_CLAUDE_LOG", str(log))
     monkeypatch.setenv("FAKE_CLAUDE_MODE", "crash")
     with pytest.raises(ClaudeError, match="Fehler"):
         ClaudeRunner(make_config()).ask("x")
+    assert len(read_log(log)) == 1  # ohne fortgesetzte Sitzung kein zweiter Versuch
 
 
 def test_timeout_kills_process(make_config: ConfigFactory, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -226,3 +232,41 @@ def test_cancel_before_start_never_runs_claude(
     with pytest.raises(ClaudeCancelled):
         ClaudeRunner(make_config()).ask("x", cancel_event=cancel)
     assert not log.exists()  # kein Claude-Prozess (der sonst nach Programmende weiterliefe)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="unter Windows prueft die CI taskkill /T ueber die .cmd-Kette"
+)
+def test_cancel_kills_the_whole_process_tree(
+    make_config: ConfigFactory, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import os
+    import threading
+    import time
+
+    child_file = tmp_path / "child.pid"
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "sleep_child")
+    monkeypatch.setenv("FAKE_CLAUDE_CHILD", str(child_file))
+    runner = ClaudeRunner(make_config(timeout_s=60))
+    worker = threading.Thread(target=lambda: pytest.raises(ClaudeError, runner.ask, "x"))
+    worker.start()
+    deadline = time.monotonic() + 10
+    while not child_file.exists():
+        assert time.monotonic() < deadline
+        time.sleep(0.05)
+    child = int(child_file.read_text(encoding="utf-8"))
+    assert runner.cancel()
+    worker.join(timeout=10)
+
+    def alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        state = Path(f"/proc/{pid}/stat")
+        return not (state.exists() and state.read_text().split()[2] == "Z")  # Zombie zaehlt als tot
+
+    deadline = time.monotonic() + 5
+    while alive(child) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not alive(child), "Unterprozess von Claude lief nach dem Abbruch weiter"

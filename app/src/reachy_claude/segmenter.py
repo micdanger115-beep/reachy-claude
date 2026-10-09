@@ -65,7 +65,6 @@ class SpeechSegmenter:
         self._voiced_frames = 0
         self._silent_frames = 0
         self._speech_noise = initial_noise_dbfs  # Grundrauschen beim Satzbeginn (eingefroren)
-        self.muted = False
 
     @property
     def noise_dbfs(self) -> float:
@@ -99,8 +98,6 @@ class SpeechSegmenter:
 
     def feed(self, samples: Audio) -> Iterator[Audio]:
         """Audio einspeisen; liefert jeden abgeschlossenen Satz."""
-        if self.muted:
-            return
         self._pending = np.concatenate([self._pending, samples.astype(np.float32, copy=False)])
         while self._pending.size >= FRAME:
             frame, self._pending = self._pending[:FRAME], self._pending[FRAME:]

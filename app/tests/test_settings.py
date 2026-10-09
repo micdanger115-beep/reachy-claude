@@ -200,3 +200,59 @@ def test_windows_path_in_double_quotes_gets_a_helpful_message(tmp_path: Path) ->
     file.write_text('[claude]\nprojektordner = "D:\\code\\x"\n', encoding="utf-8")
     with pytest.raises(SettingsError, match="einfache"):
         load_settings(file)
+
+
+@pytest.mark.parametrize(
+    ("value", "ok"),
+    [
+        ("1", True),
+        ("60", True),
+        ("0", False),
+        ("0.5", False),
+        ("61", False),
+        ('"15"', False),
+        ("true", False),
+    ],
+)
+def test_timeout_limits(tmp_path: Path, value: str, ok: bool) -> None:
+    file = write(
+        tmp_path / "e.toml",
+        f'projektordner = "{tmp_path.as_posix()}"\ntimeout_minuten = {value}\nclaude_programm = "{FAKE_CLAUDE.as_posix()}"\n',
+    )
+    if ok:
+        assert load_settings(file).timeout_s == float(value) * 60
+    else:
+        with pytest.raises(SettingsError, match="timeout_minuten"):
+            load_settings(file)
+
+
+def test_default_permission_is_edit(tmp_path: Path) -> None:
+    file = write(
+        tmp_path / "e.toml",
+        f'projektordner = "{tmp_path.as_posix()}"\nclaude_programm = "{FAKE_CLAUDE.as_posix()}"\n',
+    )
+    assert load_settings(file).permission is Permission.EDIT
+
+
+def test_unchanged_reachy_settings_do_not_rewrite_the_file(tmp_path: Path) -> None:
+    file = tmp_path / "e.toml"
+    file.write_text('# meine Notiz\n[reachy]\nroboter = "reachy.fritz.box"\n', encoding="utf-8")
+    remember_reachy(file, robot="reachy.fritz.box")  # nichts Neues
+    assert "# meine Notiz" in file.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("value", ["1.5", "[1, 2]", "true"])
+def test_speaker_must_be_name_or_number(tmp_path: Path, value: str) -> None:
+    file = tmp_path / "e.toml"
+    file.write_text(f"[reachy]\nsprecher = {value}\n", encoding="utf-8")
+    with pytest.raises(SettingsError, match="sprecher"):
+        load_reachy_settings(file)
+
+
+def test_broken_file_is_not_silently_overwritten(tmp_path: Path) -> None:
+    # sonst gingen Projektordner und Rechte unbemerkt verloren; stattdessen klare Anleitung
+    file = tmp_path / "e.toml"
+    file.write_text("kaputt = = =\n", encoding="utf-8")
+    with pytest.raises(SettingsError, match="loeschen"):
+        remember_reachy(file, robot="10.1.2.3")
+    assert file.read_text(encoding="utf-8") == "kaputt = = =\n"

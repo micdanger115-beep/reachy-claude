@@ -9,12 +9,6 @@ import reachy_claude.__main__ as cli
 from reachy_claude.robot import RobotConnectionError
 
 
-@pytest.fixture(autouse=True)
-def _own_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Die CLI merkt sich Einstellungen in ./einstellungen.toml – nie die echte Datei anfassen.
-    monkeypatch.chdir(tmp_path)
-
-
 def test_rejects_bad_duration(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["check-audio", "--seconds", "0"]) == 2
     assert "zwischen 1 und 60" in capsys.readouterr().out
@@ -167,3 +161,68 @@ def test_doctor_command_reports_and_fails_on_errors(
     monkeypatch.setattr("reachy_claude.doctor.run_checks", lambda **_kw: checks[:1])
     assert cli.main(["pruefen"]) == 0
     assert "Alles bereit" in capsys.readouterr().out
+
+
+# --- Pruefrunde Paket D: Verdrahtung von run_listen (vorher blieben 5 eingebaute Fehler unbemerkt) ---
+
+
+def test_listen_wiring(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """listen() bekommt: nicht blockierendes submit, Weghoeren beim Sprechen, sofortige Steuerwoerter,
+    Verwerfen bei "stopp"; beim Beenden wird ein laufender Auftrag still abgebrochen."""
+    import time
+
+    from conftest import FAKE_CLAUDE
+
+    from reachy_claude.assistant import ClaudeAssistant
+    from reachy_claude.settings import ClaudeSettings
+
+    clock = FakeClock()
+
+    class FakeMini:
+        media = FakeMedia(clock)
+
+    @contextmanager
+    def fake_connect(host: str, debug: bool = False) -> Any:
+        yield FakeMini()
+
+    class FakeTranscriber:
+        description = "Test"
+
+        def __init__(self, _config: object) -> None: ...
+
+    settings = ClaudeSettings(workdir=tmp_path, claude_bin=str(FAKE_CLAUDE), timeout_s=30)
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "sleep")
+    monkeypatch.setattr("reachy_claude.doctor.run_checks", lambda **_kw: [])
+    monkeypatch.setattr(cli, "prepare_claude", lambda *_a: settings)
+    monkeypatch.setattr("reachy_claude.stt.WhisperTranscriber", FakeTranscriber)
+    monkeypatch.setattr(cli, "connect", fake_connect)
+    monkeypatch.setattr(cli, "wait_for_audio", lambda _media: None)
+    seen: dict[str, Any] = {}
+
+    def fake_listen(
+        media: Any, transcriber: Any, output: Any, *, on_command: Any, stop: Any, **kw: Any
+    ) -> None:
+        seen.update(kw, on_command=on_command)
+        started = time.monotonic()
+        on_command("lange Aufgabe")  # muss sofort zurueckkehren (Claude arbeitet im Hintergrund)
+        seen["submit_s"] = time.monotonic() - started
+        assistant = on_command.__self__
+        seen["assistant"] = assistant
+        deadline = time.monotonic() + 5
+        while not assistant.busy and time.monotonic() < deadline:
+            time.sleep(0.01)
+        seen["busy"] = assistant.busy
+        raise KeyboardInterrupt  # Strg+C waehrend Claude laeuft
+
+    monkeypatch.setattr("reachy_claude.listener.listen", fake_listen)
+    assert cli.main(["listen", "--silent", "--no-motion"]) == 0
+
+    assert isinstance(seen["assistant"], ClaudeAssistant) and seen["on_command"].__name__ == "submit"
+    assert seen["submit_s"] < 0.5 and seen["busy"]
+    assert not seen["assistant"].busy  # Beenden hat den laufenden Auftrag abgebrochen
+    # weghoeren ueber dieselbe Sprech-Sperre, ueber die auch der Assistent spricht
+    gate = seen["muted"].__self__
+    assert type(gate).__name__ == "SpeechGate" and seen["assistant"]._voice is gate
+    assert seen["immediate"]("stopp") and seen["immediate"]("wiederhole") and not seen["immediate"]("baue x")
+    assert seen["cancels"]("stopp") and not seen["cancels"]("wiederhole")
+    assert callable(seen["on_discard"])

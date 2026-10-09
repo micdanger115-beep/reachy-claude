@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-prompt = sys.stdin.read()
+prompt = sys.stdin.buffer.read().decode("utf-8")  # wie die echte CLI: UTF-8, unabhaengig vom System
 log = os.environ.get("FAKE_CLAUDE_LOG")
 if log:
     with Path(log).open("a", encoding="utf-8") as fh:
@@ -16,6 +16,13 @@ if log:
 mode = os.environ.get("FAKE_CLAUDE_MODE", "ok")
 if mode == "sleep":
     time.sleep(30)
+if mode == "sleep_child":
+    # wie die echte CLI, die Unterprozesse startet: das Kind muss beim Abbruch mit sterben
+    import subprocess
+
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    Path(os.environ["FAKE_CLAUDE_CHILD"]).write_text(str(child.pid), encoding="utf-8")
+    time.sleep(60)
 if mode == "max_turns":
     print(
         json.dumps(

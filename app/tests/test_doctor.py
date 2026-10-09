@@ -226,3 +226,23 @@ def test_onedrive_location_is_warned(tmp_path: Path) -> None:
     assert check_location(Path("/home/anna/code-onedrive") / "x", None).level is Level.OK
     warn = check_location(Path("/Users/anna/OneDrive - Firma/reachy-claude"), None)
     assert warn.level is Level.WARNUNG and "Cloud" in warn.fix
+
+
+def test_patch_level_difference_is_fine() -> None:
+    checks = check_robot_software("r", lambda _h: {"version": "1.11.3"}, lambda: "1.11.0")
+    assert not any(c.name == "Reachy-Version" and c.level is Level.WARNUNG for c in checks)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        __import__("subprocess").TimeoutExpired("claude", 30),
+        OSError("geht nicht"),
+    ],
+)
+def test_claude_auth_check_failures_are_warnings(failure: Exception) -> None:
+    def status(_bin: str) -> str:
+        raise failure
+
+    assert check_claude(which=lambda p: p, auth_status=status).level is Level.WARNUNG
+    assert check_claude(which=lambda p: p, auth_status=lambda _b: "[]").level is Level.WARNUNG

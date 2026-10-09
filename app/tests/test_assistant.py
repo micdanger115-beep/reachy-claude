@@ -283,3 +283,28 @@ def test_stop_while_reading_the_answer_does_not_claim_nothing_runs(tmp_path: Pat
     assistant.submit("stopp")
     wait_until(lambda: not assistant.busy)
     assert NOTHING_TO_CANCEL not in voice.said
+
+
+def test_unexpected_error_in_background_is_spoken_not_swallowed(tmp_path: Path) -> None:
+    class Broken(FakeClaude):
+        def ask(self, *args: object, **kwargs: object) -> ClaudeResult:
+            raise RuntimeError("kaputt")
+
+    assistant, voice, _ = make(Broken(), tmp_path)
+    assistant.submit("mach was")
+    wait_until(lambda: not assistant.busy)
+    assert voice.said[-1] == "Bei der Anfrage an Claude ist ein unerwarteter Fehler passiert."
+
+
+def test_answer_is_spoken_even_if_transcript_cannot_be_written(tmp_path: Path) -> None:
+    blocked = tmp_path / "datei-statt-ordner"
+    blocked.write_text("x", encoding="utf-8")
+    voice, lines = FakeVoice(), []
+    assistant = ClaudeAssistant(FakeClaude(), voice, lines.append, transcript_dir=blocked)
+    assistant.handle("setz x")
+    assert voice.said[-1] == "Ich habe x gesetzt."
+
+
+@pytest.mark.parametrize("text", ["Halt!", "stopp es", "hör doch einfach auf", "Abbruch, kurz"])
+def test_more_stop_phrases(text: str) -> None:
+    assert control_word(text) is Control.STOP

@@ -421,6 +421,11 @@ Lautsprecher und eine Uhr, damit nichts wirklich warten muss. CI
 zusätzlich die **komplette Installation inkl. Reachy-SDK** und das Startskript unter
 Windows PowerShell 5.1 geprüft.
 
+**Prüfrunde (2026-10-09):** vier parallele Prüf-Agents (Korrektheit, Sicherheit, Testqualität, Windows/Doku);
+kritische Funde selbst nachgeprüft und behoben – u. a. Claude konnte außerhalb des Projektordners schreiben
+(jetzt `--restricted`, gegen die echte CLI geprüft), „stopp“ im Nachlauf ging an Claude, Echo bei langsamer
+Erkennung. 246 Tests ✅; jeder neue Regressionstest war vor dem Fix rot bzw. erkennt die eingebauten Fehler.
+
 **Verifiziert Schritt 6 (2026-10-08):** 186 Tests ✅ (u. a. Abbruch beendet den Prozessbaum, Steuerwörter vs. echte Aufträge, Einstellungen gemerkt/geprüft, keine Echos während Hintergrund-Ansagen, Startprüfung inkl. echtem HTTP-Abruf) · `pruefen` gegen den **echten Reachy-Daemon (Simulation)**: Version 1.11.0 gelesen, Sicherheitshinweise korrekt · **echte Claude CLI**: Auftrag nach 4 s per „stopp“ abgebrochen (Prozess beendet), danach Auftrag + „wiederhole“ ✅ · CI Windows: `Reachy-Claude.cmd pruefen` und Desktop-Verknüpfung.
 
 **Verifiziert Schritt 5 (2026-10-08):** 126 Tests ✅ (u. a. alle Stimmungen innerhalb der Grenzen, keine Sprünge > 3°/40 ms) · gegen den **echten Reachy-Daemon im Simulationsmodus**: Aufwachen, alle Stimmungen (Kopf folgt: Zuhören 8° schräg/3° hoch, Nachdenken 8° hoch), Antennen-Richtungen, Sprech-Wackeln, Schlafen ✅.

@@ -238,7 +238,12 @@ def load_settings(
         raise SettingsError("'rechte' muss read oder edit sein.") from exc
 
     timeout_min = data.get("timeout_minuten", 15)
-    if not isinstance(timeout_min, int | float) or not 1 <= timeout_min <= 60:
+    # bool ist in Python auch eine Zahl (true == 1) – hier aber kein gueltiger Wert
+    if (
+        isinstance(timeout_min, bool)
+        or not isinstance(timeout_min, int | float)
+        or not 1 <= timeout_min <= 60
+    ):
         raise SettingsError("'timeout_minuten' muss zwischen 1 und 60 liegen.")
 
     claude_bin = find_claude(claude_program(path)) if find_program else claude_program(path)
@@ -285,7 +290,7 @@ def _parse_reachy(data: dict[str, object]) -> ReachySettings:
             f"Unbekannte Stimme {voice!r} (Tippfehler?). Alle Stimmen: Reachy-Claude.cmd voices"
         )
     speaker = data.get("sprecher")
-    if speaker is not None and not isinstance(speaker, str | int):
+    if speaker is not None and (isinstance(speaker, bool) or not isinstance(speaker, str | int)):
         raise SettingsError("'sprecher' muss ein Name oder eine Nummer sein.")
     motion = data.get("bewegung", True)
     if not isinstance(motion, bool):

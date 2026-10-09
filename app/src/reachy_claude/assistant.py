@@ -217,6 +217,8 @@ class ClaudeAssistant:
                 box["result"] = self._claude.ask(prompt, new_conversation, cancel_event=self._cancel)
             except ClaudeError as exc:
                 box["result"] = exc
+            except Exception:  # unerwartet: protokollieren, Reachy sagt es unten an
+                logger.exception("Claude-Aufruf fehlgeschlagen")
 
         worker = threading.Thread(target=work, name="claude", daemon=True)
         if self._mood is not None:
