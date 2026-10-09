@@ -123,6 +123,8 @@ class ClaudeAssistant:
         self._mood = mood
         self._last_spoken: str | None = None
         self._worker: threading.Thread | None = None
+        self._cancel = threading.Event()  # "stopp" fuer den laufenden Auftrag (gilt auch vor dem Start)
+        self._quiet = False  # beim Beenden: keine Ansagen mehr
 
     @property
     def busy(self) -> bool:
@@ -139,15 +141,20 @@ class ClaudeAssistant:
         elif self.busy:
             self._voice.say(BUSY_MESSAGE)
         else:
+            self._cancel = threading.Event()
             self._worker = threading.Thread(
                 target=self._handle_safely, args=(command,), name="auftrag", daemon=True
             )
             self._worker.start()
 
     def cancel(self) -> None:
-        """Laufenden Auftrag abbrechen (Reachy sagt "Abgebrochen", sobald Claude beendet ist)."""
-        if not (self.busy and self._claude.cancel()):
+        """Laufenden Auftrag abbrechen – egal ob Claude schon laeuft, gleich startet oder die Antwort
+        gerade vorgelesen wird (Reachy sagt "Abgebrochen", sobald Claude beendet ist)."""
+        if not self.busy:
             self._voice.say(NOTHING_TO_CANCEL)
+            return
+        self._cancel.set()
+        self._claude.cancel()
 
     def repeat(self) -> None:
         """Letzte vorgelesene Antwort nochmal sprechen."""
@@ -155,17 +162,23 @@ class ClaudeAssistant:
 
     def shutdown(self, timeout_s: float = 5.0) -> None:
         """Beim Beenden: laufenden Auftrag still abbrechen und kurz auf den Thread warten."""
+        self._quiet = True
         worker = self._worker
         if worker is not None and worker.is_alive():
+            self._cancel.set()
             self._claude.cancel()
             worker.join(timeout=timeout_s)
+
+    def _say(self, text: str) -> None:
+        if not self._quiet:
+            self._voice.say(text)
 
     def _handle_safely(self, command: str) -> None:
         try:
             self.handle(command)
         except Exception:  # der Hintergrund-Thread darf nie still sterben
             logger.exception("Auftrag fehlgeschlagen")
-            self._voice.say("Bei dem Auftrag ist ein unerwarteter Fehler passiert.")
+            self._say("Bei dem Auftrag ist ein unerwarteter Fehler passiert.")
 
     def handle(self, command: str) -> None:
         """Einen Auftrag ausfuehren (blockiert, bis Claude fertig ist)."""
@@ -179,7 +192,7 @@ class ClaudeAssistant:
                 self._voice.say("Okay, neues Thema. Was soll Claude tun?")
                 return
 
-        self._voice.say("Ich frage Claude.")
+        self._say("Ich frage Claude.")
         result = self._ask_with_progress(prompt, new_conversation=self._fresh_conversation)
         if result is None:
             return
@@ -191,14 +204,17 @@ class ClaudeAssistant:
             except OSError as exc:
                 logger.error("Mitschrift konnte nicht geschrieben werden: %s", exc)
         self._last_spoken = make_spoken_text(result.text, self._spoken_max_chars)
-        self._voice.say(self._last_spoken)
+        if self._cancel.is_set():  # "stopp" kam, als Claude schon fertig war: nicht vorlesen
+            self._output("        (Vorlesen abgebrochen – die Antwort steht oben)")
+            return
+        self._say(self._last_spoken)
 
     def _ask_with_progress(self, prompt: str, new_conversation: bool) -> ClaudeResult | None:
         box: dict[str, ClaudeResult | ClaudeError] = {}
 
         def work() -> None:
             try:
-                box["result"] = self._claude.ask(prompt, new_conversation)
+                box["result"] = self._claude.ask(prompt, new_conversation, cancel_event=self._cancel)
             except ClaudeError as exc:
                 box["result"] = exc
 
@@ -211,7 +227,8 @@ class ClaudeAssistant:
                 worker.join(timeout=self._progress_interval_s)
                 if not worker.is_alive():
                     break
-                self._voice.say("Claude arbeitet noch.")
+                if not self._cancel.is_set():
+                    self._say("Claude arbeitet noch.")
         finally:
             if self._mood is not None:
                 self._mood.set_mood(Mood.IDLE)
@@ -219,12 +236,12 @@ class ClaudeAssistant:
         outcome = box.get("result")
         if isinstance(outcome, ClaudeCancelled):
             self._output("        (Auftrag abgebrochen)")
-            self._voice.say(str(outcome))
+            self._say(str(outcome))
             return None
         if isinstance(outcome, ClaudeError):
-            self._voice.say(str(outcome))
+            self._say(str(outcome))
             return None
         if outcome is None:  # unerwarteter Fehler im Thread (wurde bereits geloggt)
-            self._voice.say("Bei der Anfrage an Claude ist ein unerwarteter Fehler passiert.")
+            self._say("Bei der Anfrage an Claude ist ein unerwarteter Fehler passiert.")
             return None
         return outcome

@@ -399,3 +399,105 @@ def test_control_words_skip_the_follow_on() -> None:
     )
     # "stopp" sofort; der normale Auftrag wartet auf den Nachlauf und geht erst beim Ende raus
     assert commands == [("stopp", False), ("lange Aufgabe", True)]
+
+
+# --- Pruefrunde Paket B ---
+
+
+def stop_or_repeat(command: str) -> bool:
+    return command.lower().startswith(("stopp", "wiederhol"))
+
+
+def test_stop_during_follow_on_discards_the_pending_command() -> None:
+    """Fund der Pruefrunde: "Claude, stopp" im Nachlauf wurde an den Auftrag gehaengt und an Claude geschickt."""
+    discarded: list[bool] = []
+    audio = np.concatenate([noise(1.0), speech(1.5), noise(1.6), speech(0.8), noise(4.0)])
+    commands, lines = run_listen(
+        audio,
+        ["Claude, lösche den Ordner build", "Claude, stopp, doch nicht"],
+        immediate=stop_or_repeat,
+        cancels=lambda command: command.lower().startswith("stopp"),
+        on_discard=lambda: discarded.append(True),
+    )
+    assert commands == []  # nichts geht an Claude
+    assert discarded == [True]
+    assert any("verworfen" in line for line in lines)
+
+
+def test_repeat_during_follow_on_is_handled_and_command_still_sent() -> None:
+    audio = np.concatenate([noise(1.0), speech(1.5), noise(1.6), speech(0.8), noise(4.0)])
+    commands, _ = run_listen(
+        audio, ["Claude, schreib eine Funktion", "Claude, wiederhole"], immediate=stop_or_repeat
+    )
+    assert commands == [("wiederhole", False), ("schreib eine Funktion", False)]
+
+
+def test_pending_command_goes_out_even_if_the_microphone_stalls() -> None:
+    # Nach dem Satz kommt kein Audio mehr (WebRTC stockt): Obergrenze nach Uhrzeit
+    commands, _ = run_listen(
+        np.concatenate([noise(1.0), speech(1.5), noise(PAUSE)]), ["Claude, erklär main.py"]
+    )
+    assert commands == [("erklär main.py", False)]
+
+
+class BrokenMedia(ScriptedMedia):
+    def get_audio_sample(self) -> Audio | None:
+        if len(self._chunks) < 100:
+            raise ConnectionError("WebRTC weg")
+        return super().get_audio_sample()
+
+
+def test_microphone_failure_is_reported_instead_of_silently_hanging() -> None:
+    from reachy_claude.listener import MicrophoneError
+
+    stop = threading.Event()
+    errors: list[BaseException] = []
+
+    def run() -> None:
+        try:
+            listen(
+                BrokenMedia(noise(5.0)),
+                ScriptedTranscriber([], threading.Event()),
+                lambda _: None,
+                print,
+                stop,
+            )
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    worker.join(timeout=5)
+    stop.set()
+    assert not worker.is_alive()
+    assert len(errors) == 1 and isinstance(errors[0], MicrophoneError)
+
+
+def test_audio_recorded_while_reachy_speaks_is_dropped_even_if_processed_later() -> None:
+    """Fund der Pruefrunde: Weghoeren wurde erst bei der Verarbeitung geprueft. Laeuft die Erkennung
+    lange, waehrend Reachy spricht, kam Reachys eigene Stimme danach als Auftrag an."""
+    speaking = threading.Event()
+
+    class SlowFirst(ScriptedTranscriber):
+        def transcribe(self, audio: Audio) -> str:
+            self.durations.append(audio.size / SAMPLE_RATE)
+            if len(self.durations) == 1:
+                speaking.set()  # Reachy sagt gerade "Claude arbeitet noch." ...
+                time.sleep(0.4)  # ... waehrend die Erkennung (CPU) lange braucht
+                speaking.clear()
+                return "Was läuft im Fernsehen?"
+            return "Claude, ECHO"
+
+    stop = threading.Event()
+    commands: list[str] = []
+    audio = np.concatenate([noise(1.0), speech(1.0), noise(PAUSE), speech(1.0), noise(PAUSE), noise(2.0)])
+    worker = threading.Thread(
+        target=listen,
+        args=(PacedMedia(audio), SlowFirst([], threading.Event()), lambda _: None, commands.append, stop),
+        kwargs={"clock": lambda: time.monotonic() * SPEEDUP, "muted": speaking.is_set, "follow_on_s": 0.0},
+    )
+    worker.start()
+    worker.join(timeout=len(audio) / SAMPLE_RATE / SPEEDUP + 3)
+    stop.set()
+    worker.join(timeout=5)
+    assert commands == []  # frueher: ["ECHO"]

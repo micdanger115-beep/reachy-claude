@@ -160,5 +160,34 @@ def test_moving_voice_sets_speaking_and_restores() -> None:
             seen.append(animator.mood)
 
     MovingVoice(Voice(), animator).say("Hallo")
-    assert seen == [Mood.SPEAKING]
+    assert seen == [Mood.THINKING]  # die Grundstimmung bleibt ...
     assert animator.mood is Mood.THINKING
+
+
+def test_speaking_is_shown_on_top_of_the_mood() -> None:
+    clock = Clock()
+    animator = Animator(FakeRobot(), builder, clock=clock)
+    shown: list[Mood] = []
+
+    class Voice:
+        def say(self, text: str) -> None:
+            shown.append(animator.shown_mood)
+
+    MovingVoice(Voice(), animator).say("Hallo")
+    assert shown == [Mood.SPEAKING]  # ... gezeigt wird "spricht"
+    assert animator.shown_mood is Mood.IDLE
+
+
+def test_mood_change_while_speaking_is_not_undone_afterwards() -> None:
+    """Fund der Pruefrunde: MovingVoice stellte die Stimmung von *vor* dem Sprechen wieder her –
+    wurde Claude waehrenddessen fertig (THINKING -> IDLE), blieb Reachy im Denk-Modus haengen."""
+    clock = Clock()
+    animator = Animator(FakeRobot(), builder, clock=clock)
+    animator.set_mood(Mood.THINKING)
+
+    class Voice:
+        def say(self, text: str) -> None:
+            animator.set_mood(Mood.IDLE)  # Claude wird fertig, waehrend Reachy spricht
+
+    MovingVoice(Voice(), animator).say("Claude arbeitet noch am letzten Auftrag.")
+    assert animator.shown_mood is Mood.IDLE

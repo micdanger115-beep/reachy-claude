@@ -90,7 +90,7 @@ Beispiel: `.\Reachy-Claude.cmd listen -Projekt "D:\code\anderes-projekt" -Rechte
 | „Claude, *Auftrag*“ | gibt den Auftrag an Claude, liest die Antwort vor |
 | „Claude.“ … *Auftrag* | zweistufig: erst „Claude“, dann innerhalb von 8 s den Auftrag |
 | „Claude, *langer Auftrag* … *Denkpause* … *weiter*“ | hängt an: Der Auftrag geht erst los, wenn du **ca. 3 s** nichts mehr sagst (bis zu 2 Minuten am Stück) |
-| „Claude, **stopp**“ / „abbrechen“ / „hör auf“ | bricht den laufenden Auftrag ab („Abgebrochen.“) |
+| „Claude, **stopp**“ / „abbrechen“ / „hör auf“ | bricht den laufenden Auftrag ab („Abgebrochen.“) – auch wenn Claude noch gar nicht gestartet ist; im Nachlauf verwirft es den gerade diktierten Auftrag, nichts geht an Claude |
 | „Claude, **wiederhole**“ / „nochmal“ / „wie bitte?“ | liest die letzte Antwort nochmal vor |
 | „Claude, **neues Thema**: …“ | beginnt eine neue Unterhaltung mit Claude |
 

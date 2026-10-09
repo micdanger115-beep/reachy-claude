@@ -210,3 +210,19 @@ def test_cancel_kills_running_claude(make_config: ConfigFactory, monkeypatch: py
     assert str(outcome[0]) == CANCELLED_MESSAGE
     monkeypatch.setenv("FAKE_CLAUDE_MODE", "ok")
     assert "SPRECHTEXT" in runner.ask("danach geht es normal weiter").text
+
+
+def test_cancel_before_start_never_runs_claude(
+    make_config: ConfigFactory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import threading
+
+    from reachy_claude.claude import ClaudeCancelled
+
+    log = tmp_path / "log.jsonl"
+    monkeypatch.setenv("FAKE_CLAUDE_LOG", str(log))
+    cancel = threading.Event()
+    cancel.set()  # "stopp"/Strg+C kam, bevor Claude gestartet wurde
+    with pytest.raises(ClaudeCancelled):
+        ClaudeRunner(make_config()).ask("x", cancel_event=cancel)
+    assert not log.exists()  # kein Claude-Prozess (der sonst nach Programmende weiterliefe)

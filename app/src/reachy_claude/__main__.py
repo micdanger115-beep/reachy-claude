@@ -268,10 +268,10 @@ def prepare_claude(
 
 
 def run_listen(args: argparse.Namespace, reachy: ReachySettings) -> int:
-    from .assistant import ClaudeAssistant, PrintOnly, control_word
+    from .assistant import ClaudeAssistant, Control, PrintOnly, control_word
     from .claude import ClaudeRunner
     from .doctor import has_errors, report, run_checks
-    from .listener import CommandParser, SpeechGate, Voice, listen
+    from .listener import CommandParser, MicrophoneError, SpeechGate, Voice, listen
     from .motion import Mood, MovingVoice
     from .stt import SttConfig, WhisperTranscriber
 
@@ -344,13 +344,21 @@ def run_listen(args: argparse.Namespace, reachy: ReachySettings) -> int:
                 return
             if event == "speech_start":
                 animator.set_mood(Mood.LISTENING)
-            elif event == "speech_end" and animator.mood is Mood.LISTENING:
+            elif event == "speech_end" and animator.mood is Mood.LISTENING:  # Grundstimmung (ohne "spricht")
                 busy = assistant is not None and assistant.busy
                 animator.set_mood(Mood.THINKING if busy else Mood.IDLE)
+
+        def on_discard() -> None:
+            # "Claude, stopp" waehrend der Auftrag noch auf Fortsetzung wartete: nichts geht an Claude
+            if assistant is not None and assistant.busy:
+                assistant.cancel()  # "stopp" meint dann auch den laufenden Auftrag
+            else:
+                voice.say("Okay, den Auftrag schicke ich nicht ab.")
 
         parser = CommandParser(print_line, on_wake=animator.acknowledge if animator is not None else None)
         voice.say(GREETING)
         stop = threading.Event()
+        exit_code = 0
         try:
             listen(
                 mini.media,
@@ -363,10 +371,17 @@ def run_listen(args: argparse.Namespace, reachy: ReachySettings) -> int:
                 muted=voice.muted,
                 # "stopp"/"wiederhole" sofort, ohne auf eine Fortsetzung des Auftrags zu warten
                 immediate=lambda command: control_word(command) is not None,
+                cancels=lambda command: control_word(command) is Control.STOP,
+                on_discard=on_discard,
             )
         except KeyboardInterrupt:
             stop.set()
             print("Beendet.")
+        except MicrophoneError as exc:
+            stop.set()
+            print(f"FEHLER: {exc}")
+            print("Verbindung zu Reachy pruefen (WLAN, Reachy an?) und neu starten.")
+            exit_code = 1
         finally:
             if assistant is not None:
                 assistant.shutdown()
@@ -378,7 +393,7 @@ def run_listen(args: argparse.Namespace, reachy: ReachySettings) -> int:
                         mini.goto_sleep()
                     except Exception as exc:  # Ende soll nie an der Schlafbewegung scheitern
                         logger.warning("Schlafbewegung fehlgeschlagen: %s", exc)
-    return 0
+    return exit_code
 
 
 def start_motion(mini: Any) -> Animator | None:

@@ -20,7 +20,8 @@
 - [x] Schritt 6: Doppelklick-Start, Startpruefung, alles merken, „stopp“/„wiederhole“ – wartet auf Test am Reachy
 - [x] Nachbesserung lange Auftraege (Schnitt nach 20 s / Denkpausen / mitwandernde Schwelle) – wartet auf Test am Reachy
 - [x] Pruefrunde Paket A (Sicherheit): Claude nur noch im Projektordner (`--restricted --tools`), Projektordner-/Programm-Pruefung, Schutzpfade, Telemetrie aus
-- [ ] Pruefrunde Pakete B (Zuhoeren/Abbruch), C (Bedienung/Doku), D (Tests)
+- [x] Pruefrunde Paket B (Zuhoeren/Abbruch): stopp im Nachlauf, Mikrofon-Ausfall, Weghoeren bei Aufnahme, Abbruch vor Start/stilles Beenden, Stimmung
+- [ ] Pruefrunde Pakete C (Bedienung/Doku), D (Tests)
 - [ ] Danach: Branch nach `main` (nur mit Zustimmung)
 
 ### Plan Pruefrunde mit 4 Agents (2026-10-09, freigegeben: alle Pakete A–D)
@@ -87,6 +88,17 @@ Ziel: Starten ohne Tippen von Parametern, verstaendliche Fehler vorab, sauberer 
 - Nutzer bemerkte mehr Ethernet-Last bei laufender App. Ursache: `GstWebRTCClient` empfängt fest
   Kamera-Video (H.264) + Audio; kein „nur Audio“-Modus im SDK. Optionen: so lassen / Video-Transceiver
   per SDK-Interna inaktiv setzen / Feature-Wunsch bei Pollen. **Entscheidung: so lassen.**
+
+### Erkenntnisse Pruefrunde Paket B (2026-10-09)
+- Nachlauf: Saetze waehrend des Wartens wurden ungeprueft angehaengt → „stopp“ landete im Auftrag. Jetzt: Steuerwort
+  im Nachlauf = sofort (wiederhole) bzw. Auftrag verwerfen (stopp, `on_discard`).
+- Weghoeren muss beim AUFNEHMEN entschieden werden (Mikrofon-Thread legt (Block, weggehoert?) ab); bei langsamer
+  Erkennung (CPU) wurde Reachys „Claude arbeitet noch.“ sonst nachtraeglich als Auftrag erkannt.
+- Mikrofon-Thread meldet Ausfall ueber die Warteschlange (`MicrophoneError`), `_drain` behaelt diese Meldungen.
+- Abbruch ueber ein Event pro Auftrag (`cancel_event`), das der Runner VOR und direkt NACH dem Start prueft:
+  sonst lief Claude nach Strg+C waehrend „Ich frage Claude.“ als eigener Prozess weiter. Beenden ist still.
+- „spricht“ ist eine Ebene ueber der Stimmung (Zaehler), statt die alte Stimmung wiederherzustellen.
+- Nachlauf hat zusaetzlich eine Obergrenze nach Uhrzeit (Audio kann stocken).
 
 ### Erkenntnisse Pruefrunde Paket A (2026-10-09)
 - `--allowedTools Read,Write,...` ohne Pfad gilt in `dontAsk` fuer JEDEN Pfad: Claude schrieb `../ausserhalb.txt`

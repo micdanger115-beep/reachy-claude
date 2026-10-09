@@ -114,7 +114,9 @@ class ClaudeResult:
 class AskService(Protocol):
     """Schnittstelle zu Claude (im Test ersetzbar)."""
 
-    def ask(self, prompt: str, new_conversation: bool = False) -> ClaudeResult: ...
+    def ask(
+        self, prompt: str, new_conversation: bool = False, cancel_event: threading.Event | None = None
+    ) -> ClaudeResult: ...
 
     def cancel(self) -> bool:
         """Laufenden Auftrag abbrechen; ``True``, wenn einer lief."""
@@ -220,24 +222,29 @@ class ClaudeRunner:
         _kill_tree(proc)
         return True
 
-    def ask(self, prompt: str, new_conversation: bool = False) -> ClaudeResult:
+    def ask(
+        self, prompt: str, new_conversation: bool = False, cancel_event: threading.Event | None = None
+    ) -> ClaudeResult:
+        """Auftrag ausfuehren. Ist ``cancel_event`` gesetzt (auch schon vor dem Start), wird abgebrochen."""
         with self._lock:
             if new_conversation:
                 self._session_id = None
             resume = self._session_id
             try:
-                result = self._run(prompt, resume)
+                result = self._run(prompt, resume, cancel_event)
             except ClaudeExitError:
                 if resume is None:
                     raise
                 # Sitzung evtl. abgelaufen/geloescht: einmal mit frischer Sitzung probieren.
                 logger.warning("Fortsetzen der Sitzung %s fehlgeschlagen, starte neu.", resume)
-                result = self._run(prompt, None)
+                result = self._run(prompt, None, cancel_event)
             if result.session_id:
                 self._session_id = result.session_id
             return result
 
-    def _run(self, prompt: str, session_id: str | None) -> ClaudeResult:
+    def _run(
+        self, prompt: str, session_id: str | None, cancel_event: threading.Event | None = None
+    ) -> ClaudeResult:
         argv = build_argv(self._config, session_id)
         popen_kwargs: dict[str, Any] = {}
         if sys.platform == "win32":
@@ -245,6 +252,8 @@ class ClaudeRunner:
         else:
             popen_kwargs["start_new_session"] = True
         started = time.monotonic()
+        if cancel_event is not None and cancel_event.is_set():
+            raise ClaudeCancelled(CANCELLED_MESSAGE)  # gar nicht erst starten
         with self._proc_lock:
             self._cancelled = False
             proc = subprocess.Popen(
@@ -260,6 +269,11 @@ class ClaudeRunner:
                 **popen_kwargs,
             )
             self._proc = proc
+            if cancel_event is not None and cancel_event.is_set():
+                # Abbruch kam genau waehrend des Starts: sofort beenden (sonst liefe Claude
+                # nach dem Programmende als eigener Prozess weiter)
+                self._cancelled = True
+                _kill_tree(proc)
         try:
             stdout, stderr = proc.communicate(prompt, timeout=self._config.timeout_s)
         except subprocess.TimeoutExpired as exc:

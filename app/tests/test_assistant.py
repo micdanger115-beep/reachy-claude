@@ -39,7 +39,12 @@ class FakeClaude:
         self.gate.set()
         return True
 
-    def ask(self, prompt: str, new_conversation: bool = False) -> ClaudeResult:
+    def ask(
+        self, prompt: str, new_conversation: bool = False, cancel_event: threading.Event | None = None
+    ) -> ClaudeResult:
+        if cancel_event is not None and cancel_event.is_set():
+            self.cancelled = True  # wie der echte Runner: gar nicht erst starten
+            raise ClaudeCancelled(CANCELLED_MESSAGE)
         self.calls.append((prompt, new_conversation))
         if self.gate is not None:
             self.gate.wait(5)
@@ -225,3 +230,56 @@ def test_shutdown_cancels_running_job(tmp_path: Path) -> None:
     wait_until(lambda: claude.calls)
     assistant.shutdown()
     assert claude.cancelled and not assistant.busy
+
+
+# --- Pruefrunde Paket B: Abbruch und Beenden ---
+
+
+class SlowVoice(FakeVoice):
+    """Sprechen dauert (wie echt) – in der Zeit kann "stopp" oder Strg+C kommen."""
+
+    def __init__(self, seconds: float = 0.3) -> None:
+        super().__init__()
+        self.seconds = seconds
+
+    def say(self, text: str) -> None:
+        import time
+
+        super().say(text)
+        time.sleep(self.seconds)
+
+
+def test_stop_while_announcing_never_starts_claude(tmp_path: Path) -> None:
+    claude = FakeClaude()
+    voice = SlowVoice()
+    assistant = ClaudeAssistant(claude, voice, lambda _l: None, transcript_dir=None)
+    assistant.submit("baue etwas")
+    wait_until(lambda: voice.said == ["Ich frage Claude."])  # Claude ist noch nicht gestartet
+    assistant.submit("stopp")
+    wait_until(lambda: not assistant.busy)
+    assert claude.calls == [] or claude.cancelled  # nie ohne Abbruch an Claude
+    assert NOTHING_TO_CANCEL not in voice.said
+    assert voice.said[-1] == CANCELLED_MESSAGE
+
+
+def test_shutdown_is_quiet_and_stops_claude_even_before_it_started(tmp_path: Path) -> None:
+    claude = FakeClaude()
+    voice = SlowVoice()
+    assistant = ClaudeAssistant(claude, voice, lambda _l: None, transcript_dir=None)
+    assistant.submit("baue etwas")
+    wait_until(lambda: voice.said == ["Ich frage Claude."])
+    assistant.shutdown()
+    assert not assistant.busy
+    assert claude.calls == [] or claude.cancelled
+    assert voice.said == ["Ich frage Claude."]  # keine Abbruch-Ansage beim Beenden
+
+
+def test_stop_while_reading_the_answer_does_not_claim_nothing_runs(tmp_path: Path) -> None:
+    claude = FakeClaude()
+    voice = SlowVoice(0.3)
+    assistant = ClaudeAssistant(claude, voice, lambda _l: None, transcript_dir=None)
+    assistant.submit("setz x")
+    wait_until(lambda: len(voice.said) == 2)  # liest gerade die Antwort vor
+    assistant.submit("stopp")
+    wait_until(lambda: not assistant.busy)
+    assert NOTHING_TO_CANCEL not in voice.said

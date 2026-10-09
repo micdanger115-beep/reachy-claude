@@ -7,7 +7,7 @@ angesteuert, damit nichts ruckelt:
 - ``IDLE``       ruhig "atmen": Kopf leicht auf/ab, Antennen sanft gegenlaeufig
 - ``LISTENING``  du sprichst: Kopf leicht schraeg, Antennen aufmerksam aufgestellt
 - ``THINKING``   Claude arbeitet: Blick leicht nach oben/zur Seite, Antennen wandern langsam
-- ``SPEAKING``   Reachy spricht: der Roboter wackelt selbst passend zur Sprache
+- ``SPEAKING``   Reachy spricht (Ebene ueber der Stimmung): der Roboter wackelt selbst passend zur Sprache
                  (``enable_wobbling``), wir halten Kopf ruhig und bewegen nur die Antennen
 Zusaetzlich ``acknowledge()``: kurzes "Antennen hoch" beim Wort "Claude".
 
@@ -180,6 +180,7 @@ class Animator:
         self._period = 1.0 / rate_hz
         self._clock = clock or time.monotonic
         self._mood = Mood.IDLE
+        self._speaking = 0  # wie viele Saetze gerade gesprochen werden (Ebene ueber der Stimmung)
         self._ack_at: float | None = None
         self._current = Pose()
         self._lock = threading.Lock()
@@ -193,6 +194,17 @@ class Animator:
     def mood(self) -> Mood:
         with self._lock:
             return self._mood
+
+    @property
+    def shown_mood(self) -> Mood:
+        """Was Reachy gerade zeigt: "spricht" liegt ueber der Grundstimmung."""
+        with self._lock:
+            return Mood.SPEAKING if self._speaking else self._mood
+
+    def speaking(self, active: bool) -> None:
+        """Sprechen beginnt/endet – die Grundstimmung bleibt davon unberuehrt."""
+        with self._lock:
+            self._speaking = max(0, self._speaking + (1 if active else -1))
 
     def set_mood(self, mood: Mood) -> None:
         """Stimmung wechseln (wird weich uebergeblendet)."""
@@ -211,8 +223,9 @@ class Animator:
         now = self._clock()
         dt = self._period if self._last_tick is None else max(0.0, now - self._last_tick)
         self._last_tick = now
+        mood = self.shown_mood
         with self._lock:
-            mood, ack_at = self._mood, self._ack_at
+            ack_at = self._ack_at
         target = mood_pose(mood, now - self._started_at)
         if ack_at is not None:
             target = acknowledge_overlay(target, now - ack_at)
@@ -263,16 +276,19 @@ class Animator:
 
 
 class MovingVoice:
-    """Laesst Reachy sprechen und schaltet dabei auf die Stimmung ``SPEAKING`` (danach zurueck)."""
+    """Laesst Reachy sprechen und zeigt dabei "spricht" – als Ebene ueber der Stimmung.
+
+    (Frueher wurde die Stimmung von *vor* dem Sprechen wiederhergestellt; aenderte sie sich
+    waehrenddessen – z. B. Claude wurde fertig –, blieb Reachy in der alten Stimmung haengen.)
+    """
 
     def __init__(self, voice: Any, animator: Animator) -> None:
         self._voice = voice
         self._animator = animator
 
     def say(self, text: str) -> None:
-        previous = self._animator.mood
-        self._animator.set_mood(Mood.SPEAKING)
+        self._animator.speaking(True)
         try:
             self._voice.say(text)
         finally:
-            self._animator.set_mood(previous)
+            self._animator.speaking(False)
