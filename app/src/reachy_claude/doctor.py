@@ -12,7 +12,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
-import shutil
 import subprocess
 import urllib.request
 from collections.abc import Callable, Iterable
@@ -22,7 +21,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from .robot import DAEMON_PORT, WEBRTC_SIGNALING_PORT, port_open
-from .settings import MissingProjectError, SettingsError, load_settings
+from .settings import MissingProjectError, SettingsError, claude_program, find_claude, load_settings
 
 Output = Callable[[str], None]
 Version = tuple[int, ...]
@@ -164,10 +163,14 @@ def _claude_auth_status(claude_bin: str) -> str:
 
 def check_claude(
     claude_program: str = "claude",
-    which: Callable[[str], str | None] = shutil.which,
+    which: Callable[[str], str | None] = find_claude,
     auth_status: Callable[[str], str] = _claude_auth_status,
 ) -> Check:
-    path = which(claude_program)
+    """Prueft dasselbe Programm, das spaeter gestartet wird (``claude_programm`` aus den Einstellungen)."""
+    try:
+        path = which(claude_program)
+    except SettingsError as exc:
+        return Check("Claude Code", Level.FEHLER, str(exc), r"app\einstellungen.toml korrigieren.")
     if path is None:
         return Check(
             "Claude Code",
@@ -304,7 +307,7 @@ def run_checks(
         checks.append(check_gpu(device))
     checks.append(check_voice(voice))
     if with_claude:
-        checks.append(check_claude())
+        checks.append(check_claude(claude_program(settings_file)))
         if with_project:
             checks.append(check_project(settings_file))
     robot = check_robot(host)

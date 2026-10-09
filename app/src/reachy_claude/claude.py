@@ -5,12 +5,18 @@ Sicherheitsprinzipien:
   vertrauenswuerdige) Prompt geht ausschliesslich ueber stdin, nie ueber die
   Kommandozeile. Das schuetzt auch vor Argument-Injection, wenn ``claude`` unter
   Windows eine ``.cmd``-Datei ist ("BatBadBut").
-- Rechte ueber ``--permission-mode dontAsk`` + ``--allowedTools``/``--disallowedTools``;
-  Shell und Internet-Werkzeuge sind immer gesperrt, MCP-Server werden nicht geladen.
-- Nur die eigenen Benutzer-Einstellungen gelten (``--setting-sources user``): Einstellungen
-  und Hooks aus dem Projektordner (``.claude/settings.json``) koennten sonst an allen
-  Werkzeug-Sperren vorbei Befehle ausfuehren (z. B. in einem fremden, manipulierten Repo).
-- Steuer-Ordner (``.claude``, ``.git`` mit seinen Hooks, ``.vscode``) duerfen nie bearbeitet werden.
+- ``--restricted`` + ``--tools``: Claude hat nur die fuenf Datei-Werkzeuge (Read, Grep, Glob,
+  Edit, Write) und kommt damit nur an Dateien IM Projektordner (gegen die echte CLI geprueft:
+  ohne das konnte Claude per ``../`` ueberall auf dem PC lesen und schreiben). Keine Shell
+  (auch nicht PowerShell), kein Internet, keine Subagenten, keine Skills.
+- ``--restricted`` ignoriert ausserdem alle Einstellungsdateien (Benutzer, Projekt, lokal):
+  Hooks aus ``.claude/settings.json`` eines fremden Repos koennten sonst Befehle ausfuehren,
+  und Freigaben aus deiner normalen Claude-Arbeit gelten nicht fuer gesprochene Auftraege.
+- Rechte zusaetzlich ueber ``--permission-mode dontAsk`` + ``--allowedTools``/``--disallowedTools``;
+  MCP-Server werden nicht geladen (``--strict-mcp-config``).
+- Dateien, die spaeter andere Programme ausfuehren oder auswerten (Git-Hooks, CI, Editor-
+  Aufgaben, CLAUDE.md fuer spaetere Claude-Sitzungen), duerfen nie bearbeitet werden.
+- Keine Telemetrie der CLI (``CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC``).
 - Timeout und Abbruch ("Claude, stopp") beenden den ganzen Prozessbaum.
 """
 
@@ -44,11 +50,31 @@ SYSTEM_PROMPT = (
     "ohne Code, Dateipfade, URLs, Aufzaehlungszeichen oder Markdown."
 )
 
-ALWAYS_DISALLOWED: tuple[str, ...] = ("Bash", "WebFetch", "WebSearch", "NotebookEdit")
-READ_TOOLS: tuple[str, ...] = ("Read", "Grep", "Glob", "LS", "TodoWrite")
-EDIT_TOOLS: tuple[str, ...] = ("Edit", "MultiEdit", "Write")
+ALWAYS_DISALLOWED: tuple[str, ...] = (
+    "Bash",
+    "PowerShell",
+    "WebFetch",
+    "WebSearch",
+    "NotebookEdit",
+    "Agent",
+    "Skill",
+)
+READ_TOOLS: tuple[str, ...] = ("Read", "Grep", "Glob")
+EDIT_TOOLS: tuple[str, ...] = ("Edit", "Write")
 # Gilt fuer alle Bearbeitungs-Werkzeuge und in jeder Ordnertiefe (gitignore-Muster).
-PROTECTED_PATHS: tuple[str, ...] = ("Edit(.claude/**)", "Edit(.git/**)", "Edit(.vscode/**)")
+PROTECTED_PATHS: tuple[str, ...] = (
+    "Edit(.claude/**)",
+    "Edit(.git/**)",
+    "Edit(.vscode/**)",
+    "Edit(.idea/**)",
+    "Edit(.github/**)",
+    "Edit(.husky/**)",
+    "Edit(.githooks/**)",
+    "Edit(**/CLAUDE.md)",
+    "Edit(**/CLAUDE.local.md)",
+)
+# Weniger Daten ins Netz: Telemetrie/Fehlerberichte/Auto-Update der CLI aus
+QUIET_ENV = {"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"}
 
 _SESSION_ID_RE = re.compile(r"^[0-9a-fA-F-]{8,64}$")
 
@@ -111,6 +137,9 @@ def build_argv(config: ClaudeSettings, session_id: str | None) -> list[str]:
         "json",
         "--max-turns",
         str(config.max_turns),
+        "--restricted",
+        "--tools",
+        ",".join(allowed),
         "--permission-mode",
         "dontAsk",
         "--allowedTools",
@@ -118,8 +147,6 @@ def build_argv(config: ClaudeSettings, session_id: str | None) -> list[str]:
         "--disallowedTools",
         ",".join(disallowed),
         "--strict-mcp-config",
-        "--setting-sources",
-        "user",
         "--append-system-prompt",
         SYSTEM_PROMPT,
     ]
@@ -229,6 +256,7 @@ class ClaudeRunner:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                env={**os.environ, **QUIET_ENV},
                 **popen_kwargs,
             )
             self._proc = proc

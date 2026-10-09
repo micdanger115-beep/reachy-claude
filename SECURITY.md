@@ -14,7 +14,7 @@ Bei jeder Änderung mitpflegen. (v1-Bedrohungsmodell: [`legacy/SECURITY.md`](leg
 | S1 | Fremde im Netz greifen auf den PC zu | Die App öffnet **keinen Port**; sie verbindet sich selbst zum Roboter | ✅ |
 | S2 | Sprache verlässt das Haus | Spracherkennung (Whisper) und -ausgabe lokal auf dem PC; Audio nur im Heimnetz (WebRTC, Signalisierung auf dem Roboter); Modelle nur einmalig heruntergeladen | ✅ |
 | S3 | Versehentliche Aufträge (Fernseher, Gäste, Fehlerkennung) | Nur Sätze mit Aktivierungswort „Claude“ (am Satzanfang) gehen weiter; „Claude“ allein öffnet nur 8 s lang; ein Auftrag gleichzeitig; Claude ist angewiesen, bei Unklarheit nachzufragen | ✅ |
-| S4 | Claude richtet Schaden an | Wie v1: `--permission-mode dontAsk`, nur Lesen/Bearbeiten im Projektordner (`-Rechte read` möglich), **keine Shell, kein Internet, keine MCP-Server**, **Einstellungen und Hooks aus dem Projektordner werden ignoriert** (`--setting-sources user`; sonst könnte ein fremdes, manipuliertes Repo über `.claude/settings.json` Befehle ausführen), `.claude/`, `.git/` und `.vscode/` sind nie bearbeitbar, Timeout beendet den Prozessbaum, Prompt nur über stdin (keine Argument-Injection, auch nicht über `claude.cmd`), ganzes Laufwerk als Projektordner verboten | ✅ |
+| S4 | Claude richtet Schaden an | `--restricted --tools Read,Grep,Glob,Edit,Write`: nur Datei-Werkzeuge und **nur im Projektordner** (gegen die echte CLI geprüft; **bis 2026-10-09 fehlte das – Claude konnte per `../` überall lesen und schreiben**, gefunden von der Prüfrunde), keine Shell (auch nicht PowerShell), kein Internet, keine Subagenten/Skills/MCP-Server, keine Einstellungsdateien oder Hooks (weder aus dem Projekt noch aus deiner normalen Claude-Konfiguration); zusätzlich `--permission-mode dontAsk` + Sperrlisten; Dateien, die später andere Programme ausführen/auswerten (`.git/`, `.github/`, `.husky/`, `.githooks/`, `.vscode/`, `.idea/`, `.claude/`, `CLAUDE.md`), sind nie bearbeitbar; Timeout beendet den Prozessbaum; Prompt nur über stdin; Projektordner darf nicht das Laufwerk, dein Benutzerordner (oder darüber), AppData oder der Ordner dieser App sein; `claude_programm` nur `claude`/`claude.exe`/`claude.cmd`, nie aus dem aktuellen Ordner | ✅ |
 | S12 | Gemerkte Einstellungen (`app/einstellungen.toml`) mit unsinnigen/gefährlichen Werten | Roboter-Adresse nur Hostname/IP (keine URL-Teile), Stimmenname streng geprüft (kein `..`/`/`, landet in Dateipfaden), Fehler werden vor dem Speichern erkannt – die Datei bleibt dann unverändert | ✅ |
 | S13 | Claude macht etwas Ungewolltes und läuft lange | „Claude, stopp“ beendet den laufenden Auftrag sofort (ganzer Prozessbaum); Reachy sagt ehrlich, dass schon ein Teil erledigt sein kann. Beim Beenden der App wird ein laufender Auftrag ebenfalls abgebrochen | ✅ |
 | S14 | Veraltete Reachy-Software unbemerkt | Startprüfung fragt Reachys Version im Heimnetz ab und warnt bei bekannten Lücken (S10) | ✅ |
@@ -24,7 +24,7 @@ Bei jeder Änderung mitpflegen. (v1-Bedrohungsmodell: [`legacy/SECURITY.md`](leg
 | S9 | Bewegungen | Kleine, geglättete Bewegungen; harte Grenzen (Kopf ±15°, ±10 mm, Antennen 0–60°); Netzfehler beim Senden brechen nicht ab; beim Beenden weich in Grundstellung, dann Schlafhaltung | ✅ |
 | S10 | Bekannte Lücken in Reachys eigenem Dienst (Pollen, Stand 2026-10-08) | Betreffen die Software **auf dem Roboter**, nicht unser PC-Paket. Datei-Upload ohne Anmeldung (CVE-2026-55419): behoben ab 1.8.2 → Reachy über das Dashboard aktuell halten. Bluetooth-PIN-Umgehung (GHSA-993g-hgjh-whmf): behoben in 1.12.0, noch nicht veröffentlicht. Pfad-Trick in Bluetooth-Befehlen (CVE-2026-62661, hoch): noch kein Fix → Bluetooth nur koppeln, wenn nötig; Fremdgeräte ins Gäste-WLAN. Sobald 1.12 erscheint: Roboter updaten, dann `reachy-mini`-Version der App anheben | ⚠️ |
 | S11 | Angriffe über GitHub (KI-Workflows) | Keine KI-Agenten in GitHub Actions; CI führt nur Tests aus, Rechte `contents: read`, keine Secrets | ✅ |
-| S8 | Daten an Anthropic | Nur der Auftrag und die Projektdateien, die Claude für den Auftrag liest. Projektordner bewusst wählen (keine Geheimnisse darin) | ✅ |
+| S8 | Daten an Anthropic | Nur der Auftrag und die Projektdateien (nur aus dem Projektordner, S4), die Claude für den Auftrag liest; Telemetrie der Claude CLI und von Hugging Face abgeschaltet. Projektordner bewusst wählen (keine Geheimnisse darin) | ✅ |
 
 ## Bewusst offen / Restrisiken
 - **Reachys eigene Dienste** (Daemon-API Port 8000, WebRTC-Signalisierung Port 8443,
@@ -33,6 +33,8 @@ Bei jeder Änderung mitpflegen. (v1-Bedrohungsmodell: [`legacy/SECURITY.md`](leg
   Empfehlung: Gäste-WLAN für fremde Geräte.
 - Der WebRTC-Ton zwischen Reachy und PC ist verschlüsselt (WebRTC/DTLS); die
   Signalisierung (`ws://`, Port 8443) nicht.
+- Was Claude im Projektordner ändert, wird später oft ausgeführt (dein eigener Code, Build-Skripte).
+  Änderungen deshalb vor dem Ausführen ansehen (z. B. `git diff`).
 - Keine Sprechererkennung: Jeder im Raum kann „Claude, …“ sagen – und auch „Claude, stopp“.
 - Während Reachy spricht, hört er nicht zu (sonst Selbstgespräch): „stopp“ in einer Sprechpause sagen.
 - **Kamerabild:** Die WebRTC-Verbindung des SDK überträgt fest auch Reachys Kamerabild an den PC

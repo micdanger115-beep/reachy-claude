@@ -21,6 +21,9 @@ from .robot import DEFAULT_ROBOT
 from .tts import DEFAULT_VOICE, VOICE_NAME_RE
 
 SETTINGS_FILE = Path("einstellungen.toml")
+APP_ROOT = Path(__file__).resolve().parents[3]  # Hauptordner reachy-claude (enthaelt app/)
+# Erlaubte Programmnamen fuer Claude Code (kein beliebiges Programm aus einer veraenderten Datei)
+CLAUDE_PROGRAM_NAMES = frozenset({"claude", "claude.exe", "claude.cmd"})
 # Hostname oder IPv4/IPv6 – nichts, was in einer URL etwas anderes bedeuten koennte.
 _HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-:]{0,252}$")
 
@@ -135,6 +138,71 @@ def save_settings(path: Path, workdir: Path, permission: Permission) -> None:
     )
 
 
+def _inside(path: Path, folder: Path) -> bool:
+    return path == folder or folder in path.parents
+
+
+def _home() -> Path:
+    return Path.home()
+
+
+def check_workdir(workdir: Path, home: Path | None = None, app_root: Path = APP_ROOT) -> Path:
+    """Projektordner ablehnen, in dem Claude Dinge aendern koennte, die spaeter Code ausfuehren.
+
+    Verboten: ganzes Laufwerk; dein Benutzerordner selbst oder ein Ordner darueber (enthielte
+    Autostart, PowerShell-Profil, AppData); alles unter AppData; der Ordner dieser App
+    (Claude koennte sonst die App oder ihre Einstellungen umschreiben).
+    """
+    home = (home or _home()).resolve()
+    if workdir == Path(workdir.anchor):
+        raise SettingsError(
+            "Ein ganzes Laufwerk als Projektordner ist zu riskant. Bitte einen Unterordner waehlen."
+        )
+    if _inside(home, workdir):
+        raise SettingsError(
+            f"{workdir} enthaelt deinen ganzen Benutzerordner – zu riskant. Bitte einen Projektordner waehlen, "
+            "z. B. D:\\code\\mein-projekt."
+        )
+    if _inside(workdir, home / "AppData"):
+        raise SettingsError(
+            "Ordner unter AppData sind als Projektordner nicht erlaubt (Programm- und Startdateien)."
+        )
+    if _inside(workdir, app_root) or _inside(app_root, workdir):
+        raise SettingsError(
+            "Der Ordner dieser App (reachy-claude) kann nicht Projektordner sein – Claude koennte sonst die "
+            "App selbst oder ihre Einstellungen veraendern."
+        )
+    return workdir
+
+
+def claude_program(path: Path) -> str:
+    """Gespeicherter Programmname fuer Claude Code (Standard ``claude``), ohne strenge Pruefung."""
+    if not path.is_file():
+        return "claude"
+    try:
+        value = tomllib.loads(path.read_text(encoding="utf-8")).get("claude", {}).get("claude_programm")
+    except tomllib.TOMLDecodeError:
+        return "claude"
+    return value if isinstance(value, str) and value else "claude"
+
+
+def find_claude(program: str) -> str | None:
+    """Claude Code finden – nur unter einem der erlaubten Namen und nie aus dem aktuellen Ordner.
+
+    (Windows sucht Programme sonst zuerst im aktuellen Ordner; eine dort eingeschleuste
+    ``claude.cmd`` wuerde gestartet.)
+    """
+    if Path(program).name.lower() not in CLAUDE_PROGRAM_NAMES:
+        raise SettingsError(
+            f"'claude_programm' = {program!r} ist nicht erlaubt: nur claude, claude.exe oder claude.cmd "
+            "(gern mit vollem Pfad)."
+        )
+    found = shutil.which(program)
+    if found is None or Path(found).resolve().parent == Path.cwd().resolve():
+        return None
+    return found
+
+
 def load_settings(path: Path, workdir_override: Path | None = None) -> ClaudeSettings:
     """Einstellungen lesen und pruefen; ``workdir_override`` ersetzt den gespeicherten Ordner."""
     data: dict[str, object] = {}
@@ -152,11 +220,7 @@ def load_settings(path: Path, workdir_override: Path | None = None) -> ClaudeSet
     workdir = Path(str(raw_dir)).expanduser()
     if not workdir.is_dir():
         raise SettingsError(f"Projektordner existiert nicht: {workdir}")
-    workdir = workdir.resolve()
-    if workdir == Path(workdir.anchor):
-        raise SettingsError(
-            "Ein ganzes Laufwerk als Projektordner ist zu riskant. Bitte einen Unterordner waehlen."
-        )
+    workdir = check_workdir(workdir.resolve())
 
     try:
         permission = Permission(str(data.get("rechte", Permission.EDIT.value)).lower())
@@ -167,7 +231,7 @@ def load_settings(path: Path, workdir_override: Path | None = None) -> ClaudeSet
     if not isinstance(timeout_min, int | float) or not 1 <= timeout_min <= 60:
         raise SettingsError("'timeout_minuten' muss zwischen 1 und 60 liegen.")
 
-    claude_bin = shutil.which(str(data.get("claude_programm", "claude")))
+    claude_bin = find_claude(claude_program(path))
     if claude_bin is None:
         raise SettingsError(
             "Claude Code wurde nicht gefunden. Installieren (https://claude.com/claude-code) und einmal "

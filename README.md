@@ -184,11 +184,13 @@ Reachy: Ich habe in der Datei calc.py die Funktion mul hinzugefügt. Sie multipl
 - Dauert es länger, sagt Reachy alle 45 s „Claude arbeitet noch.“ Abbruch nach 15 Minuten.
 - Es läuft immer **ein Auftrag** zur Zeit; währenddessen hört Reachy nicht zu.
 
-**Was Claude darf** (fest eingebaut): Dateien im Projektordner **lesen** und – mit Rechten
-`edit` (Standard) – **bearbeiten/anlegen**. **Nie**: Shell-Befehle, Internet, Zusatz-Server
-(MCP), die Ordner `.claude`, `.git` und `.vscode` ändern. Einstellungen und Hooks, die im
-Projektordner liegen, werden ignoriert – auch ein fremdes, manipuliertes Repo kann so keine
-Befehle einschleusen. Alles andere wird ohne Rückfrage verweigert.
+**Was Claude darf** (fest eingebaut): Dateien **nur im Projektordner** lesen und – mit Rechten
+`edit` (Standard) – bearbeiten/anlegen. **Nie**: Dateien außerhalb des Projektordners, Shell-Befehle
+(auch PowerShell), Internet, Zusatz-Server (MCP), Subagenten; nie ändern: `.git`, `.github`, `.claude`,
+`.vscode`, `.idea`, Git-Hooks und `CLAUDE.md`. Einstellungen und Hooks aus Einstellungsdateien gelten
+für Sprachaufträge nicht – auch ein fremdes, manipuliertes Repo kann so keine Befehle einschleusen.
+Als Projektordner nicht erlaubt: ganzes Laufwerk, dein Benutzerordner, AppData, der Ordner dieser App.
+Alles andere wird ohne Rückfrage verweigert.
 
 | Option | Wirkung |
 |---|---|

@@ -33,11 +33,38 @@ def test_edit_level_allows_edits_but_never_shell_or_web(make_config: ConfigFacto
     assert {"Edit(.claude/**)", "Edit(.git/**)", "Edit(.vscode/**)"} <= set(disallowed)
 
 
-@pytest.mark.parametrize("permission", list(Permission))
-def test_project_settings_and_hooks_are_ignored(make_config: ConfigFactory, permission: Permission) -> None:
-    # Hooks aus .claude/settings.json im Projektordner wuerden sonst Befehle ausfuehren.
+@pytest.mark.parametrize(
+    ("permission", "tools"),
+    [
+        (Permission.READ, ["Read", "Grep", "Glob"]),
+        (Permission.EDIT, ["Read", "Grep", "Glob", "Edit", "Write"]),
+    ],
+)
+def test_only_file_tools_inside_the_project(
+    make_config: ConfigFactory, permission: Permission, tools: list[str]
+) -> None:
+    # --restricted + --tools: nur diese Werkzeuge, nur im Projektordner, keine Einstellungsdateien/Hooks
+    # (mit der echten CLI geprueft: ohne das konnte Claude per ../ ueberall lesen und schreiben).
     argv = build_argv(make_config(permission=permission), None)
-    assert argv[argv.index("--setting-sources") + 1] == "user"
+    assert "--restricted" in argv
+    assert argv[argv.index("--tools") + 1].split(",") == tools
+    assert argv[argv.index("--allowedTools") + 1].split(",") == tools
+    disallowed = set(argv[argv.index("--disallowedTools") + 1].split(","))
+    assert {"Bash", "PowerShell", "WebFetch", "WebSearch", "Agent", "Skill"} <= disallowed
+    assert "--setting-sources" not in argv  # --restricted ignoriert ohnehin alle Einstellungsdateien
+
+
+def test_files_run_or_read_by_other_programs_are_protected(make_config: ConfigFactory) -> None:
+    argv = build_argv(make_config(permission=Permission.EDIT), None)
+    disallowed = set(argv[argv.index("--disallowedTools") + 1].split(","))
+    for rule in (
+        "Edit(.git/**)",
+        "Edit(.github/**)",
+        "Edit(.husky/**)",
+        "Edit(**/CLAUDE.md)",
+        "Edit(.vscode/**)",
+    ):
+        assert rule in disallowed
 
 
 def test_read_level_disallows_edits(make_config: ConfigFactory) -> None:
@@ -71,6 +98,8 @@ def test_prompt_goes_via_stdin_not_argv(
     assert all(prompt not in arg for arg in call["argv"])  # type: ignore[union-attr]
     # Die Schutzregeln kommen unveraendert an (unter Windows ueber die .cmd-Datei).
     assert call["argv"] == build_argv(make_config(workdir=tmp_path), None)[1:]
+    # ohne Telemetrie der CLI (Datensparsamkeit)
+    assert call["env"]["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"  # type: ignore[index]
     assert result.session_id == "11111111-2222-3333-4444-555555555555"
     assert "SPRECHTEXT:" in result.text
 

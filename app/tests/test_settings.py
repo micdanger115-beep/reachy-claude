@@ -56,7 +56,9 @@ def test_override_wins(tmp_path: Path) -> None:
         ('projektordner = "/"\n', "Laufwerk"),
         ('projektordner = "{tmp}"\nrechte = "alles"\n', "read oder edit"),
         ('projektordner = "{tmp}"\ntimeout_minuten = 999\n', "zwischen 1 und 60"),
-        ('projektordner = "{tmp}"\nclaude_programm = "gibt-es-nicht-xyz"\n', "nicht gefunden"),
+        ('projektordner = "{tmp}"\nclaude_programm = "/gibt/es/nicht/claude"\n', "nicht gefunden"),
+        ('projektordner = "{tmp}"\nclaude_programm = "C:/boese/start.cmd"\n', "nicht erlaubt"),
+        ('projektordner = "{tmp}"\nclaude_programm = "python"\n', "nicht erlaubt"),
         ("kaputt = = =\n", "fehlerhaft"),
     ],
 )
@@ -145,3 +147,42 @@ def test_hand_edited_reachy_values_are_checked(tmp_path: Path) -> None:
         load_reachy_settings(file)
     file.write_text("[reachy]\nsprecher = 3\nbewegung = false\n", encoding="utf-8")
     assert load_reachy_settings(file).speaker == "3"
+
+
+def test_project_folder_must_not_expose_startup_or_the_app(tmp_path: Path) -> None:
+    from reachy_claude.settings import check_workdir
+
+    home = tmp_path / "Users" / "anna"
+    (home / "AppData" / "Roaming").mkdir(parents=True)
+    app = tmp_path / "tools" / "reachy-claude"
+    (app / "app").mkdir(parents=True)
+    project = home / "code" / "projekt"
+    project.mkdir(parents=True)
+
+    def check(path: Path) -> Path:
+        return check_workdir(path, home=home, app_root=app)
+
+    assert check(project) == project
+    for bad, message in [
+        (home, "Benutzerordner"),  # Autostart, PowerShell-Profil, .ssh ...
+        (tmp_path / "Users", "Benutzerordner"),
+        (home / "AppData" / "Roaming", "AppData"),
+        (app, "dieser App"),  # Claude koennte die App/ihre Einstellungen umschreiben
+        (app / "app", "dieser App"),
+        (tmp_path / "tools", "dieser App"),
+    ]:
+        with pytest.raises(SettingsError, match=message):
+            check(bad)
+
+
+def test_claude_is_never_taken_from_the_current_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from reachy_claude.settings import find_claude
+
+    planted = tmp_path / "claude"
+    planted.write_text("#!/bin/sh\n", encoding="utf-8")
+    planted.chmod(0o755)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("shutil.which", lambda _p: str(planted))  # Windows sucht zuerst im aktuellen Ordner
+    assert find_claude("claude") is None

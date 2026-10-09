@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import threading
 import time
@@ -84,6 +85,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Datensparsamkeit: keine Nutzungsstatistik beim (einmaligen) Laden der Modelle
+    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     args = build_parser().parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.WARNING,

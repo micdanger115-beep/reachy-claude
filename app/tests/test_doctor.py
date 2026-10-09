@@ -190,7 +190,7 @@ def test_run_checks_skips_software_when_robot_unreachable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(doctor, "check_robot", lambda h: check_robot(h, lambda _h, _p: False))
-    monkeypatch.setattr(doctor, "check_claude", lambda: Check("Claude Code", Level.OK, "ok"))
+    monkeypatch.setattr(doctor, "check_claude", lambda _program: Check("Claude Code", Level.OK, "ok"))
     monkeypatch.setattr(doctor, "check_robot_software", lambda _h: pytest.fail("nicht aufrufen"))
     checks = doctor.run_checks(host="r", voice="de_DE-thorsten-medium", settings_file=tmp_path / "e.toml")
     names = [c.name for c in checks]
@@ -203,3 +203,15 @@ def test_run_checks_skips_software_when_robot_unreachable(
         "Reachy erreichbar",
     ]
     assert has_errors(checks)
+
+
+def test_claude_check_uses_the_configured_program(tmp_path: Path) -> None:
+    file = tmp_path / "e.toml"
+    file.write_text(f'[claude]\nclaude_programm = "{FAKE_CLAUDE.as_posix()}"\n', encoding="utf-8")
+    seen: list[str] = []
+    check_claude(
+        doctor.claude_program(file), which=lambda p: seen.append(p) or p, auth_status=lambda _b: "{}"
+    )
+    assert seen == [FAKE_CLAUDE.as_posix()]
+    bad = check_claude("C:/boese/start.cmd")
+    assert bad.level is Level.FEHLER and "nicht erlaubt" in bad.message

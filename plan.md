@@ -19,7 +19,34 @@
       Steuer-Ordner gesperrt; Reachy-Luecken in SECURITY.md (S10)
 - [x] Schritt 6: Doppelklick-Start, Startpruefung, alles merken, „stopp“/„wiederhole“ – wartet auf Test am Reachy
 - [x] Nachbesserung lange Auftraege (Schnitt nach 20 s / Denkpausen / mitwandernde Schwelle) – wartet auf Test am Reachy
+- [x] Pruefrunde Paket A (Sicherheit): Claude nur noch im Projektordner (`--restricted --tools`), Projektordner-/Programm-Pruefung, Schutzpfade, Telemetrie aus
+- [ ] Pruefrunde Pakete B (Zuhoeren/Abbruch), C (Bedienung/Doku), D (Tests)
 - [ ] Danach: Branch nach `main` (nur mit Zustimmung)
+
+### Plan Pruefrunde mit 4 Agents (2026-10-09, freigegeben: alle Pakete A–D)
+Vier parallele Pruef-Agents (Korrektheit, Sicherheit, Testqualitaet, Windows/Doku). Kritische Befunde selbst nachgeprueft.
+**A – Sicherheit (kritisch, selbst bestaetigt):**
+- A1: Claude kann AUSSERHALB des Projektordners schreiben und lesen (`../ausserhalb.txt` angelegt – nachgeprueft
+  mit echter CLI und genau unseren Argumenten). Werkzeuge ohne Pfad gelten in `dontAsk` fuer jeden Pfad.
+  Fix: `--restricted --tools Read,Grep,Glob,Edit,Write` (nachgeprueft: aussen blockiert, innen geht; nur 5 Werkzeuge;
+  ignoriert auch Benutzer-Einstellungen; sperrt PowerShell/REPL). Regressionstest.
+- A2: zu weite Projektordner (Benutzerprofil, AppData, Ordner mit der App selbst) ablehnen.
+- A3: weitere Schutzpfade: `CLAUDE.md`, `.github/`, `.husky/`, `.githooks/`, `.idea/`.
+- A4: `claude_programm` nur `claude`/`claude.exe`/`claude.cmd`; Startpruefung prueft dasselbe Programm.
+- A5: Datensparsamkeit: Telemetrie der Claude CLI und von Hugging Face abschalten (Umgebungsvariablen).
+**B – Zuhoeren/Abbruch (Korrektheit):**
+- B1 (kritisch, im Code nachvollzogen): „Claude, stopp“ im Nachlauf wird an den Auftrag angehaengt und an Claude geschickt.
+- B2: stirbt der Mikrofon-Thread, hoert die App still nie wieder etwas → melden und beenden.
+- B3: Weghoeren wird erst bei der Verarbeitung geprueft, nicht bei der Aufnahme → bei langsamer Erkennung hoert sich
+  Reachy doch selbst („arbeitet noch“ als Auftrag). Fix: Zeitpunkt der Aufnahme mitfuehren.
+- B4: Strg+C waehrend „Ich frage Claude.“ → Claude-Prozess kann nach Programmende weiterlaufen; Abbruch-Ansage beim Beenden.
+- B5: Stimmung kann haengen bleiben (Denken/Zuhoeren); Nachlauf-Obergrenze nach Uhrzeit.
+**C – Bedienung/Doku (Windows):** Stimme gegen Liste pruefen (Tippfehler blockiert sonst jeden Start); Python 3.12/3.13
+bevorzugen; kaputte .venv erkennen; Hinweise mit `Reachy-Claude.cmd`/`-Robot` statt Python-Optionen; irrefuehrende
+Doppel-Meldung ohne Claude; relativer `-Projekt`-Pfad; Fortschritt bei langen Downloads; TOML-Pfad-Schreibweise erklaeren;
+Warnung bei OneDrive-Ordner; veraltete README-/plan-/agents-Stellen.
+**D – Tests:** Verdrahtung `run_listen` testen (aktuell bleiben 5 Mutationen gruen); alle Tests im Temp-Ordner (conftest);
+gezielte Luecken (Werkzeuglisten exakt, UTF-8-Prompt, Prozessbaum-Kill mit Kindprozess, Fehlerpfade Assistent, Einstellungen).
 
 ### Plan Nachbesserung „lange Auftraege“ (freigegeben 2026-10-08, Variante „Nachlauf 2 s“; umgesetzt)
 Fehlerbild (Nutzer): Bei laengeren gesprochenen Prompts bricht die Aufnahme ab und ggf. geht nur der
@@ -60,6 +87,16 @@ Ziel: Starten ohne Tippen von Parametern, verstaendliche Fehler vorab, sauberer 
 - Nutzer bemerkte mehr Ethernet-Last bei laufender App. Ursache: `GstWebRTCClient` empfängt fest
   Kamera-Video (H.264) + Audio; kein „nur Audio“-Modus im SDK. Optionen: so lassen / Video-Transceiver
   per SDK-Interna inaktiv setzen / Feature-Wunsch bei Pollen. **Entscheidung: so lassen.**
+
+### Erkenntnisse Pruefrunde Paket A (2026-10-09)
+- `--allowedTools Read,Write,...` ohne Pfad gilt in `dontAsk` fuer JEDEN Pfad: Claude schrieb `../ausserhalb.txt`
+  (mit echter CLI und exakt unseren Argumenten nachgeprueft). Unsere Zusage „nur im Projektordner“ war falsch.
+- `--restricted` (entfernt Shell/Code-Werkzeuge, ignoriert alle Einstellungsdateien) + `--tools Read,Grep,Glob,Edit,Write`
+  begrenzt Lesen und Schreiben auf den Projektordner – geprueft: aussen lesen/schreiben blockiert, innen geht, Hook im
+  Projekt laeuft nicht, Shell gesperrt, Leserechte ohne Schreibwerkzeug. `LS`/`MultiEdit` gibt es in der CLI nicht mehr.
+- `Edit(**/CLAUDE.md)`, `Edit(.github/**)`, `Edit(.husky/**)` wirken (getestet). `--setting-sources user` entfaellt
+  (durch `--restricted` abgedeckt; vorher erbte die Sprachsitzung Freigaben aus `~/.claude/settings.json`).
+- Projektordner-Pruefung braucht im Test einen eigenen „Benutzerordner“ (Windows-Temp liegt unter AppData).
 
 ### Erkenntnisse lange Auftraege (2026-10-08)
 - Satzerkennung: Schwelle im Satz eingefroren (Rauschen beim Satzbeginn + 4 dB statt aktuell + 6 dB),
